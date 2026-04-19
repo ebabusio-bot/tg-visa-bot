@@ -8,6 +8,7 @@ from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from telegram.constants import ParseMode
+from telegram.error import Conflict, NetworkError, TimedOut
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, filters,
@@ -412,9 +413,11 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.exception("Update error", exc_info=ctx.error)
+    err = ctx.error
+    if isinstance(err, (Conflict, NetworkError, TimedOut)):
+        return
     try:
         import traceback
-        err = ctx.error
         tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))[-2500:]
 
         user_info = "—"
