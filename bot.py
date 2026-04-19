@@ -23,8 +23,8 @@ from prompts import (
 
 load_dotenv()
 
-BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
+BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"].strip()
+ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"].strip())
 DAILY_LIMIT = 15
 
 logging.basicConfig(
@@ -70,7 +70,6 @@ def yes_no_kb():
 def post_quiz_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📞 Записаться на консультацию", callback_data="book")],
-        [InlineKeyboardButton("❓ Задать уточняющий вопрос",   callback_data="ask")],
         [InlineKeyboardButton("⬅️ В меню", callback_data="menu")],
     ])
 
@@ -177,7 +176,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = None
         left = max(0, DAILY_LIMIT - db.get_today_count(q.from_user.id))
         await q.edit_message_text(
-            "Задайте ваш вопрос по EB-1A, EB-2 NIW или O-1. "
+            "Задайте ваш вопрос по EB-1A, EB-2 NIW, O-1, E-2 или убежищу. "
             "Отвечаю на основе правил USCIS.\n\n"
             f"_Осталось сообщений сегодня: {left}/{DAILY_LIMIT}_",
             parse_mode=ParseMode.MARKDOWN,

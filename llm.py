@@ -12,7 +12,7 @@ _client: AsyncAnthropic | None = None
 def _get_client() -> AsyncAnthropic:
     global _client
     if _client is None:
-        _client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        _client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"].strip())
     return _client
 
 async def ask(history: list[dict], user_msg: str) -> tuple[str, bool]:
