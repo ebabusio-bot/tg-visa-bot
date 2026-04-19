@@ -412,6 +412,38 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.exception("Update error", exc_info=ctx.error)
+    try:
+        import traceback
+        err = ctx.error
+        tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))[-2500:]
+
+        user_info = "—"
+        action = "—"
+        if isinstance(update, Update):
+            u = update.effective_user
+            if u:
+                user_info = f"{u.first_name or ''} (@{u.username or '—'}, id {u.id})"
+            if update.callback_query:
+                action = f"callback: {update.callback_query.data}"
+            elif update.message:
+                if update.message.text:
+                    action = f"text: {update.message.text[:80]}"
+                elif update.message.document:
+                    action = "document"
+                elif update.message.photo:
+                    action = "photo"
+
+        alert = (
+            f"⚠️ *Ошибка в боте*\n\n"
+            f"*Пользователь:* {user_info}\n"
+            f"*Действие:* `{action}`\n"
+            f"*Ошибка:* `{type(err).__name__}: {err}`\n\n"
+            f"```\n{tb}\n```"
+        )
+        alert = alert[:4000]
+        await ctx.bot.send_message(ADMIN_CHAT_ID, alert, parse_mode=ParseMode.MARKDOWN)
+    except Exception:
+        log.exception("Failed to send error alert to admin")
 
 def main():
     db.init_db()
