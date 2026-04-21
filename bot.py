@@ -176,7 +176,10 @@ async def cmd_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
-    await update.message.reply_text("Контекст сброшен. /menu — главное меню.")
+    await update.message.reply_text(
+        "Контекст сброшен. Выберите действие:",
+        reply_markup=main_menu_kb(),
+    )
 
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
@@ -344,27 +347,32 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "case_done":
-        if ctx.user_data.get(S_MODE) == "case_review":
-            u = q.from_user
-            db.save_lead(u.id, u.username, "Бесплатный разбор кейса (см. пересланные сообщения)", "case_review")
-            try:
-                await safe_send(
-                    ctx.bot,
-                    ADMIN_CHAT_ID,
-                    f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
-                    f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
-                    f"_Все его сообщения и документы пересланы выше._",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            except Exception as e:
-                log.warning("admin notify failed: %s", e)
-            ctx.user_data[S_MODE] = None
-            ctx.user_data.pop("case_review_started", None)
+        if ctx.user_data.get(S_MODE) != "case_review":
             await q.edit_message_text(
-                "✅ Спасибо! Эксперт изучит вашу заявку и свяжется с вами в течение "
-                "1-2 рабочих дней.",
+                "Эта кнопка уже не активна. Выберите действие:",
                 reply_markup=main_menu_kb(),
             )
+            return
+        u = q.from_user
+        db.save_lead(u.id, u.username, "Бесплатный разбор кейса (см. пересланные сообщения)", "case_review")
+        try:
+            await safe_send(
+                ctx.bot,
+                ADMIN_CHAT_ID,
+                f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
+                f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
+                f"_Все его сообщения и документы пересланы выше._",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            log.warning("admin notify failed: %s", e)
+        ctx.user_data[S_MODE] = None
+        ctx.user_data.pop("case_review_started", None)
+        await q.edit_message_text(
+            "✅ Спасибо! Эксперт изучит вашу заявку и свяжется с вами в течение "
+            "1-2 рабочих дней.",
+            reply_markup=main_menu_kb(),
+        )
         return
 
 async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_yes: bool):
@@ -374,7 +382,10 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     ans  = ctx.user_data.get(S_QUIZ_ANS, [])
     cfg  = quiz.get_quiz(kind)
     if not cfg:
-        await q.edit_message_text("Ошибка состояния. /menu")
+        await q.edit_message_text(
+            "Анкета больше не активна. Выберите действие:",
+            reply_markup=main_menu_kb(),
+        )
         return
 
     ans.append(is_yes)
@@ -419,6 +430,14 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.upsert_user(u.id, u.username, u.first_name)
     text = update.message.text.strip()
     mode = ctx.user_data.get(S_MODE)
+
+    if mode == "quiz":
+        await update.message.reply_text(
+            "Вы сейчас проходите анкету — отвечайте кнопками *«✅ Да»* или *«❌ Нет»* "
+            "под вопросом выше. Если хотите выйти из анкеты — /menu.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
 
     if mode == "lead":
         db.save_lead(u.id, u.username, text, "booking")
