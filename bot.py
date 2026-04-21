@@ -112,18 +112,16 @@ CLICK_LABELS = {
 }
 
 async def notify_admin_activity(bot, user, label: str):
-    """Send a compact activity notification to the admin chat."""
+    """Send a compact activity notification to the admin chat (plain text, no markdown)."""
     try:
         uname = f"@{user.username}" if user.username else "—"
         name = user.first_name or "—"
-        await safe_send(
-            bot,
-            ADMIN_CHAT_ID,
-            f"👆 {md_esc(name)} ({md_esc(uname)}, id `{user.id}`)\n_{md_esc(label)}_",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        text = f"👆 {name} ({uname}, id {user.id})\n{label}"
+        await bot.send_message(ADMIN_CHAT_ID, text)
+        log.info("admin activity notify sent: user=%s label=%s", user.id, label)
     except Exception as e:
-        log.warning("admin activity notify failed: %s", e)
+        log.warning("admin activity notify FAILED: %s (user=%s label=%s)",
+                    e, user.id, label)
 
 def main_menu_kb():
     return InlineKeyboardMarkup([
@@ -186,11 +184,29 @@ async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     is_admin = u and u.id == ADMIN_CHAT_ID
     await update.message.reply_text(
-        f"Ваш Telegram user ID: `{u.id}`\n"
-        f"ADMIN_CHAT_ID в настройках бота: `{ADMIN_CHAT_ID}`\n"
-        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}",
-        parse_mode=ParseMode.MARKDOWN,
+        f"Ваш Telegram user ID: {u.id}\n"
+        f"ADMIN ID в настройках бота: {ADMIN_CHAT_ID}\n"
+        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}"
     )
+
+async def cmd_testnotify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: force a test admin-activity notification and report success/failure."""
+    if not _is_admin(update):
+        return
+    u = update.effective_user
+    try:
+        await ctx.bot.send_message(
+            ADMIN_CHAT_ID,
+            f"🔔 Тестовое уведомление\nОт /testnotify, user id {u.id}"
+        )
+        await update.message.reply_text(
+            "✅ Тестовое уведомление отправлено. Если выше видно сообщение «🔔 Тестовое уведомление» — "
+            "пайплайн работает."
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка при отправке уведомления: {type(e).__name__}: {e}"
+        )
 
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
@@ -655,8 +671,9 @@ def main():
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("menu",    cmd_menu))
     app.add_handler(CommandHandler("reset",   cmd_reset))
-    app.add_handler(CommandHandler("whoami",  cmd_whoami))
-    app.add_handler(CommandHandler("users",   cmd_users))
+    app.add_handler(CommandHandler("whoami",      cmd_whoami))
+    app.add_handler(CommandHandler("testnotify",  cmd_testnotify))
+    app.add_handler(CommandHandler("users",       cmd_users))
     app.add_handler(CommandHandler("chat",    cmd_chat))
     app.add_handler(CommandHandler("leads",   cmd_leads))
     app.add_handler(CallbackQueryHandler(on_callback))
