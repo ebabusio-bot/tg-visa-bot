@@ -97,6 +97,34 @@ async def safe_send(bot, chat_id: int, text: str, **kwargs):
         kwargs.pop("parse_mode", None)
         return await bot.send_message(chat_id, text, **kwargs)
 
+CLICK_LABELS = {
+    "menu":        "⬅️ В меню",
+    "ask":         "❓ Задать вопрос по визе",
+    "quiz":        "📋 Оценить шансы (анкета)",
+    "case_review": "🆓 Бесплатный разбор ситуации",
+    "pricing":     "💰 Стоимость и сроки",
+    "book":        "📞 Записаться на консультацию",
+    "case_done":   "✅ Завершить отправку (case review)",
+    "quiz:eb1a":   "Выбрал квиз: EB-1A",
+    "quiz:niw":    "Выбрал квиз: EB-2 NIW",
+    "quiz:o1":     "Выбрал квиз: O-1",
+    "quiz:e2":     "Выбрал квиз: E-2",
+}
+
+async def notify_admin_activity(bot, user, label: str):
+    """Send a compact activity notification to the admin chat."""
+    try:
+        uname = f"@{user.username}" if user.username else "—"
+        name = user.first_name or "—"
+        await safe_send(
+            bot,
+            ADMIN_CHAT_ID,
+            f"👆 {md_esc(name)} ({md_esc(uname)}, id `{user.id}`)\n_{md_esc(label)}_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        log.warning("admin activity notify failed: %s", e)
+
 def main_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("❓ Задать вопрос по визе",         callback_data="ask")],
@@ -137,6 +165,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
     ctx.user_data.clear()
+    await notify_admin_activity(ctx.bot, u, "Отправил /start")
     await update.message.reply_text(
         WELCOME, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_kb()
     )
@@ -226,6 +255,10 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
+
+    if not data.startswith("q:"):
+        label = CLICK_LABELS.get(data, f"нажал кнопку: {data}")
+        await notify_admin_activity(ctx.bot, q.from_user, label)
 
     if data == "menu":
         ctx.user_data.clear()
