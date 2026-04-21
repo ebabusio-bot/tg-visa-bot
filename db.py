@@ -73,6 +73,35 @@ def inc_today_count(tg_id: int) -> int:
         ).fetchone()
         return row["count"]
 
+def try_consume_daily(tg_id: int, limit: int) -> tuple[bool, int]:
+    """Atomically check-and-increment the daily counter.
+
+    Returns (allowed, count_after_op). If the user is already at or above
+    the limit, returns (False, current_count) and does NOT increment.
+    Otherwise increments and returns (True, new_count).
+    """
+    today = date.today().isoformat()
+    c = _conn()
+    try:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT count FROM daily_count WHERE tg_id=? AND day=?",
+            (tg_id, today),
+        ).fetchone()
+        current = row["count"] if row else 0
+        if current >= limit:
+            c.execute("ROLLBACK")
+            return False, current
+        c.execute(
+            "INSERT INTO daily_count(tg_id, day, count) VALUES(?,?,1) "
+            "ON CONFLICT(tg_id, day) DO UPDATE SET count=count+1",
+            (tg_id, today),
+        )
+        c.execute("COMMIT")
+        return True, current + 1
+    finally:
+        c.close()
+
 def save_lead(tg_id: int, username: str | None, payload: str, source: str):
     with _conn() as c:
         c.execute(

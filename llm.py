@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 """Anthropic Claude API wrapper with prompt caching."""
+import logging
 import os
 from anthropic import AsyncAnthropic
 from prompts import SYSTEM_PROMPT
 
 MODEL = "claude-sonnet-4-6"
-MAX_TOKENS = 400
+MAX_TOKENS = 1500
+
+log = logging.getLogger("llm")
 
 _client: AsyncAnthropic | None = None
 
@@ -38,6 +41,12 @@ async def ask(history: list[dict], user_msg: str) -> tuple[str, bool]:
     )
 
     text = "".join(b.text for b in resp.content if b.type == "text").strip()
+
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        log.warning(
+            "LLM hit max_tokens=%d (user_msg=%r, out_chars=%d)",
+            MAX_TOKENS, user_msg[:100], len(text),
+        )
 
     lowered = text.lower()
     offer_consultation = any(s in lowered for s in [

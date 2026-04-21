@@ -8,18 +8,19 @@ from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from telegram.constants import ParseMode
-from telegram.error import Conflict, NetworkError, TimedOut
+from telegram.error import BadRequest, Conflict, NetworkError, TimedOut
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, filters,
 )
+from telegram.helpers import escape_markdown
 
 import db
 import llm
 import quiz
 from prompts import (
     DISCLAIMER, WELCOME, LIMIT_REACHED,
-    LEAD_PROMPT, LEAD_RECEIVED, QUIZ_START,
+    LEAD_PROMPT, LEAD_RECEIVED, QUIZ_START, PRICING_TEXT,
 )
 
 load_dotenv()
@@ -39,11 +40,69 @@ S_QUIZ_KIND = "quiz_kind"
 S_QUIZ_IDX  = "quiz_idx"
 S_QUIZ_ANS  = "quiz_answers"
 
+def md_esc(s: str | None) -> str:
+    """Escape user-provided text for safe inclusion in Markdown (v1) messages."""
+    if not s:
+        return ""
+    return escape_markdown(str(s), version=1)
+
+TG_MSG_SAFE = 3900  # Telegram limit is 4096; leave headroom for footer/markup
+
+def split_for_telegram(text: str, limit: int = TG_MSG_SAFE) -> list[str]:
+    """Split text into chunks ≤ limit chars, preferring paragraph boundaries."""
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for para in text.split("\n\n"):
+        candidate = (current + "\n\n" + para) if current else para
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            if len(para) <= limit:
+                current = para
+            else:
+                for i in range(0, len(para), limit):
+                    piece = para[i:i + limit]
+                    if i + limit >= len(para):
+                        current = piece
+                    else:
+                        chunks.append(piece)
+                        current = ""
+    if current:
+        chunks.append(current)
+    return chunks
+
+async def safe_reply(message, text: str, **kwargs):
+    """reply_text with Markdown; on parse failure, resend as plain text."""
+    try:
+        return await message.reply_text(text, **kwargs)
+    except BadRequest as e:
+        if "parse" not in str(e).lower() and "entit" not in str(e).lower():
+            raise
+        log.warning("markdown reply failed, retrying as plain text: %s", e)
+        kwargs.pop("parse_mode", None)
+        return await message.reply_text(text, **kwargs)
+
+async def safe_send(bot, chat_id: int, text: str, **kwargs):
+    """bot.send_message with Markdown; on parse failure, resend as plain text."""
+    try:
+        return await bot.send_message(chat_id, text, **kwargs)
+    except BadRequest as e:
+        if "parse" not in str(e).lower() and "entit" not in str(e).lower():
+            raise
+        log.warning("markdown send failed, retrying as plain text: %s", e)
+        kwargs.pop("parse_mode", None)
+        return await bot.send_message(chat_id, text, **kwargs)
+
 def main_menu_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("❓ Задать вопрос по визе",         callback_data="ask")],
         [InlineKeyboardButton("📋 Оценить шансы (анкета)",       callback_data="quiz")],
         [InlineKeyboardButton("🆓 Бесплатный разбор ситуации",   callback_data="case_review")],
+        [InlineKeyboardButton("💰 Стоимость и сроки",            callback_data="pricing")],
         [InlineKeyboardButton("📞 Записаться на консультацию",   callback_data="book")],
     ])
 
@@ -91,7 +150,11 @@ async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Контекст сброшен. /menu — главное меню.")
 
 def _is_admin(update: Update) -> bool:
-    return update.effective_user and update.effective_user.id == ADMIN_CHAT_ID
+    u = update.effective_user
+    c = update.effective_chat
+    return bool(
+        (u and u.id == ADMIN_CHAT_ID) or (c and c.id == ADMIN_CHAT_ID)
+    )
 
 async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
@@ -100,27 +163,24 @@ async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not rows:
         await update.message.reply_text("Пользователей пока нет.")
         return
-    lines = ["*Пользователи бота* (последние 50):\n"]
+    lines = ["Пользователи бота (последние 50):\n"]
     for r in rows:
         name = r["first_name"] or "—"
         uname = f"@{r['username']}" if r["username"] else "—"
         last = (r["last_msg"] or "—")[:16]
         lines.append(
-            f"`{r['tg_id']}` · {name} · {uname}\n"
+            f"{r['tg_id']} · {name} · {uname}\n"
             f"   сообщений: {r['msg_count']} · последнее: {last}"
         )
-    lines.append("\n_Чтобы посмотреть переписку:_ `/chat <id>`")
-    await update.message.reply_text(
-        "\n".join(lines), parse_mode=ParseMode.MARKDOWN
-    )
+    lines.append("\nЧтобы посмотреть переписку: /chat <id>")
+    await update.message.reply_text("\n".join(lines))
 
 async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
     if not ctx.args:
         await update.message.reply_text(
-            "Использование: `/chat <tg_id>`\nID берите из `/users`.",
-            parse_mode=ParseMode.MARKDOWN,
+            "Использование: /chat <tg_id>\nID берите из /users."
         )
         return
     try:
@@ -130,18 +190,17 @@ async def cmd_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     msgs = db.full_history(tg_id, limit=100)
     if not msgs:
-        await update.message.reply_text(f"С пользователем `{tg_id}` переписки нет.",
-                                        parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(f"С пользователем {tg_id} переписки нет.")
         return
-    chunks: list[str] = [f"*Переписка с `{tg_id}`* (до 100 сообщ.):\n"]
+    chunks: list[str] = [f"Переписка с {tg_id} (до 100 сообщ.):\n"]
     for m in msgs:
         who = "👤" if m["role"] == "user" else "🤖"
         ts = (m["created_at"] or "")[:16]
-        body = (m["content"] or "").replace("`", "'")
-        chunks.append(f"{who} _{ts}_\n{body}\n")
+        body = m["content"] or ""
+        chunks.append(f"{who} {ts}\n{body}\n")
     text = "\n".join(chunks)
     for i in range(0, len(text), 3500):
-        await update.message.reply_text(text[i:i + 3500], parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(text[i:i + 3500])
 
 async def cmd_leads(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
@@ -150,18 +209,18 @@ async def cmd_leads(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not rows:
         await update.message.reply_text("Заявок пока нет.")
         return
-    lines = ["*Последние заявки* (до 30):\n"]
+    lines = ["Последние заявки (до 30):\n"]
     for r in rows:
         ts = (r["created_at"] or "")[:16]
         uname = f"@{r['username']}" if r["username"] else "—"
         src = r["source"] or "—"
         payload = (r["payload"] or "")[:200]
         lines.append(
-            f"_{ts}_ · {src} · {uname} · `{r['tg_id']}`\n{payload}\n"
+            f"{ts} · {src} · {uname} · {r['tg_id']}\n{payload}\n"
         )
     text = "\n".join(lines)
     for i in range(0, len(text), 3500):
-        await update.message.reply_text(text[i:i + 3500], parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(text[i:i + 3500])
 
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -192,6 +251,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("quiz:"):
         kind = data.split(":", 1)[1]
         cfg = quiz.get_quiz(kind)
+        if not cfg:
+            await q.edit_message_text(
+                "Неизвестная категория анкеты.", reply_markup=main_menu_kb()
+            )
+            return
         ctx.user_data[S_MODE]      = "quiz"
         ctx.user_data[S_QUIZ_KIND] = kind
         ctx.user_data[S_QUIZ_IDX]  = 0
@@ -214,19 +278,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(LEAD_PROMPT, parse_mode=ParseMode.MARKDOWN)
         return
 
+    if data == "pricing":
+        ctx.user_data[S_MODE] = None
+        await q.edit_message_text(
+            PRICING_TEXT,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📞 Записаться на консультацию", callback_data="book")],
+                [InlineKeyboardButton("⬅️ В меню",                    callback_data="menu")],
+            ]),
+        )
+        return
+
     if data == "case_review":
         ctx.user_data[S_MODE] = "case_review"
         ctx.user_data["case_review_started"] = False
         await q.edit_message_text(
             "🆓 *Бесплатный разбор вашей ситуации*\n\n"
+            "⚠️ *Важно:* всё, что вы здесь напишете и приложите, *пересылается живому специалисту* "
+            "— не ИИ-ассистенту. Ответа в боте не будет — эксперт свяжется лично.\n\n"
+            "_Если хотите задать вопрос ИИ — нажмите «⬅️ В меню» и выберите «❓ Задать вопрос по визе»._\n\n"
             "Опишите вашу ситуацию (профессия, опыт, цели) и при желании прикрепите документы — "
             "CV, дипломы, статьи, награды, рекомендательные письма.\n\n"
             "📎 *Как прикрепить файл:* нажмите скрепку слева от поля ввода сообщения внизу экрана → "
             "выберите «Файл» или «Фото» → отправьте. Принимаются PDF, DOCX, JPG, PNG и др. "
             "до 2 ГБ за файл.\n\n"
-            "Можно отправить *несколькими сообщениями* — я всё передам специалисту. "
-            "Когда закончите — нажмите *«Завершить отправку»*.\n\n"
-            "_Эксперт изучит вашу ситуацию и свяжется лично в течение 1-2 рабочих дней._",
+            "Можно отправить *несколькими сообщениями*. Когда закончите — нажмите *«Завершить отправку»*.\n\n"
+            "_Специалист свяжется в течение 1-2 рабочих дней._",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=case_review_kb(),
         )
@@ -237,10 +315,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             u = q.from_user
             db.save_lead(u.id, u.username, "Бесплатный разбор кейса (см. пересланные сообщения)", "case_review")
             try:
-                await ctx.bot.send_message(
+                await safe_send(
+                    ctx.bot,
                     ADMIN_CHAT_ID,
                     f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
-                    f"От: {u.first_name or ''} (@{u.username or '—'}, id `{u.id}`)\n"
+                    f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
                     f"_Все его сообщения и документы пересланы выше._",
                     parse_mode=ParseMode.MARKDOWN,
                 )
@@ -288,14 +367,14 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     )
     admin_txt = (
         f"📋 *Квалификационная анкета завершена*\n\n"
-        f"Пользователь: {u.first_name or ''} (@{u.username or '—'}, id {u.id})\n"
-        f"Виза: *{kind.upper()}*\n"
+        f"Пользователь: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id {u.id})\n"
+        f"Виза: *{md_esc(kind.upper())}*\n"
         f"Результат: {sum(ans)}/{cfg['total']} — "
         f"{'✅ квалифицируется' if qualifies else '⚠️ под вопросом'}\n\n"
-        f"{detail}"
+        f"{md_esc(detail)}"
     )
     try:
-        await ctx.bot.send_message(ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
+        await safe_send(ctx.bot, ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         log.warning("admin notify failed: %s", e)
     db.save_lead(u.id, u.username, f"{kind}: {sum(ans)}/{cfg['total']}", "quiz")
@@ -313,11 +392,11 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = None
         admin_txt = (
             f"📞 *Новая заявка на консультацию*\n\n"
-            f"От: {u.first_name or ''} (@{u.username or '—'}, id {u.id})\n\n"
-            f"{text}"
+            f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id {u.id})\n\n"
+            f"{md_esc(text)}"
         )
         try:
-            await ctx.bot.send_message(ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
+            await safe_send(ctx.bot, ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             log.warning("admin notify failed: %s", e)
         await update.message.reply_text(LEAD_RECEIVED, reply_markup=main_menu_kb())
@@ -327,8 +406,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _forward_case_review(update, ctx, "text")
         return
 
-    count = db.get_today_count(u.id)
-    if count >= DAILY_LIMIT:
+    allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
+    if not allowed:
         await update.message.reply_text(
             LIMIT_REACHED,
             reply_markup=InlineKeyboardMarkup([[
@@ -344,29 +423,34 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         answer, offer_consultation = await llm.ask(history, text)
     except Exception:
         log.exception("LLM error")
+        db.save_msg(u.id, "user", text)
         await update.message.reply_text(
             "Временная ошибка при обращении к базе знаний. Попробуйте ещё раз через минуту."
         )
         return
 
-    db.inc_today_count(u.id)
     db.save_msg(u.id, "user", text)
     db.save_msg(u.id, "assistant", answer)
 
-    left = DAILY_LIMIT - (count + 1)
+    left = DAILY_LIMIT - new_count
     footer = f"\n\n_Осталось сегодня: {left}/{DAILY_LIMIT}_"
 
+    kb = None
     if offer_consultation:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("📞 Записаться на консультацию",  callback_data="book")],
             [InlineKeyboardButton("🆓 Бесплатный разбор ситуации", callback_data="case_review")],
             [InlineKeyboardButton("⬅️ В меню", callback_data="menu")],
         ])
-        await update.message.reply_text(
-            answer + footer, parse_mode=ParseMode.MARKDOWN, reply_markup=kb
-        )
-    else:
-        await update.message.reply_text(answer + footer, parse_mode=ParseMode.MARKDOWN)
+
+    parts = split_for_telegram(answer)
+    for part in parts[:-1]:
+        await safe_reply(update.message, part, parse_mode=ParseMode.MARKDOWN)
+    last = parts[-1] + footer
+    await safe_reply(
+        update.message, last,
+        parse_mode=ParseMode.MARKDOWN, reply_markup=kb,
+    )
 
 async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, kind: str):
     """Forward a user's text/document/photo to the admin during case_review mode."""
@@ -375,10 +459,11 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
 
     if not ctx.user_data.get("case_review_started"):
         try:
-            await ctx.bot.send_message(
+            await safe_send(
+                ctx.bot,
                 ADMIN_CHAT_ID,
                 f"🆓 *Новая заявка на бесплатный разбор*\n\n"
-                f"От: {u.first_name or ''} (@{u.username or '—'}, id `{u.id}`)\n"
+                f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
                 f"_Ниже пересылаются его сообщения и документы:_",
                 parse_mode=ParseMode.MARKDOWN,
             )
@@ -386,6 +471,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
             log.warning("admin notify failed: %s", e)
         ctx.user_data["case_review_started"] = True
 
+    forwarded = True
     try:
         await ctx.bot.forward_message(
             chat_id=ADMIN_CHAT_ID,
@@ -393,23 +479,75 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
             message_id=update.message.message_id,
         )
     except Exception as e:
+        forwarded = False
         log.warning("forward failed: %s", e)
 
-    await update.message.reply_text(
-        "✓ Получено. Отправьте ещё материалы или нажмите *«Завершить отправку»*.",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=case_review_kb(),
-    )
+    if forwarded:
+        await update.message.reply_text(
+            "✓ Передал специалисту. Он ответит лично (не через бот) в течение "
+            "1-2 рабочих дней.\n\n"
+            "Можно отправить ещё материалы или нажать «Завершить отправку».",
+            reply_markup=case_review_kb(),
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ Не удалось передать это сообщение специалисту. "
+            "Попробуйте ещё раз или напишите текстом в «Записаться на консультацию».",
+            reply_markup=case_review_kb(),
+        )
+
+async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Forward attachment sent during lead (booking) mode to the admin."""
+    u = update.effective_user
+    db.upsert_user(u.id, u.username, u.first_name)
+    db.save_lead(u.id, u.username, "Файл приложен к заявке (см. пересланное сообщение)", "booking_file")
+    try:
+        await safe_send(
+            ctx.bot,
+            ADMIN_CHAT_ID,
+            f"📎 *Файл к заявке на консультацию*\n\n"
+            f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
+            f"_Файл пересылается ниже._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        log.warning("admin notify failed: %s", e)
+
+    forwarded = True
+    try:
+        await ctx.bot.forward_message(
+            chat_id=ADMIN_CHAT_ID,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+        )
+    except Exception as e:
+        forwarded = False
+        log.warning("forward failed: %s", e)
+
+    if forwarded:
+        await update.message.reply_text(
+            "✓ Файл получен. Если ещё не прислали имя и описание — пришлите одним сообщением."
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ Не удалось передать файл специалисту. Попробуйте ещё раз "
+            "или опишите ситуацию текстом."
+        )
 
 async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Handle documents/photos — only meaningful inside case_review mode."""
-    if ctx.user_data.get(S_MODE) != "case_review":
-        await update.message.reply_text(
-            "Чтобы отправить документы — выберите в меню «🆓 Бесплатный разбор ситуации».",
-            reply_markup=main_menu_kb(),
-        )
+    """Handle non-text messages (documents/photos/voice/video/audio)."""
+    mode = ctx.user_data.get(S_MODE)
+    if mode == "case_review":
+        await _forward_case_review(update, ctx, "attachment")
         return
-    await _forward_case_review(update, ctx, "attachment")
+    if mode == "lead":
+        await _forward_booking_attachment(update, ctx)
+        return
+    await update.message.reply_text(
+        "Чтобы отправить документы — выберите в меню «🆓 Бесплатный разбор ситуации» "
+        "или «📞 Записаться на консультацию».",
+        reply_markup=main_menu_kb(),
+    )
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.exception("Update error", exc_info=ctx.error)
@@ -459,7 +597,11 @@ def main():
     app.add_handler(CommandHandler("leads", cmd_leads))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, on_attachment))
+    app.add_handler(MessageHandler(
+        filters.Document.ALL | filters.PHOTO | filters.VOICE |
+        filters.VIDEO | filters.AUDIO | filters.VIDEO_NOTE,
+        on_attachment,
+    ))
     app.add_error_handler(on_error)
     log.info("Bot started. Model=%s, daily_limit=%d", llm.MODEL, DAILY_LIMIT)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
