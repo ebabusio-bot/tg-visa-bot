@@ -181,6 +181,17 @@ async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_kb(),
     )
 
+async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Diagnostic: show user's Telegram ID and whether it matches ADMIN_CHAT_ID."""
+    u = update.effective_user
+    is_admin = u and u.id == ADMIN_CHAT_ID
+    await update.message.reply_text(
+        f"Ваш Telegram user ID: `{u.id}`\n"
+        f"ADMIN_CHAT_ID в настройках бота: `{ADMIN_CHAT_ID}`\n"
+        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
     c = update.effective_chat
@@ -641,12 +652,13 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
 def main():
     db.init_db()
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("menu",  cmd_menu))
-    app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("users", cmd_users))
-    app.add_handler(CommandHandler("chat",  cmd_chat))
-    app.add_handler(CommandHandler("leads", cmd_leads))
+    app.add_handler(CommandHandler("start",   cmd_start))
+    app.add_handler(CommandHandler("menu",    cmd_menu))
+    app.add_handler(CommandHandler("reset",   cmd_reset))
+    app.add_handler(CommandHandler("whoami",  cmd_whoami))
+    app.add_handler(CommandHandler("users",   cmd_users))
+    app.add_handler(CommandHandler("chat",    cmd_chat))
+    app.add_handler(CommandHandler("leads",   cmd_leads))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(
