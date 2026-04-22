@@ -19,10 +19,8 @@ from telegram.helpers import escape_markdown
 import db
 import llm
 import quiz
-from prompts import (
-    DISCLAIMER, WELCOME, LIMIT_REACHED,
-    LEAD_PROMPT, LEAD_RECEIVED, QUIZ_START, PRICING_TEXT,
-)
+import i18n
+from i18n import t, LANGUAGES, LANG_FLAGS, LANG_NAMES_RU, normalize_lang
 
 load_dotenv()
 
@@ -110,6 +108,17 @@ async def safe_send(bot, chat_id: int, text: str, **kwargs):
         kwargs.pop("parse_mode", None)
         return await bot.send_message(chat_id, text, **kwargs)
 
+def user_lang(user_id: int) -> str:
+    """Return saved language code for user, or DEFAULT_LANG ('ru') if not set."""
+    return normalize_lang(db.get_user_lang(user_id))
+
+def lang_badge(lang: str) -> str:
+    """Admin-facing language badge, e.g. '🇬🇧 английский'."""
+    flag = LANG_FLAGS.get(lang, "🏳️")
+    name = LANG_NAMES_RU.get(lang, lang)
+    return f"{flag} {name}"
+
+# Admin-facing labels for callback buttons. Stay in Russian regardless of user language.
 CLICK_LABELS = {
     "menu":        "⬅️ В меню",
     "ask":         "❓ Задать вопрос по визе",
@@ -122,9 +131,10 @@ CLICK_LABELS = {
     "quiz:niw":    "Выбрал квиз: EB-2 NIW",
     "quiz:o1":     "Выбрал квиз: O-1",
     "quiz:e2":     "Выбрал квиз: E-2",
+    "lang":        "🌐 Сменить язык",
 }
 
-async def notify_admin_activity(bot, user, label: str):
+async def notify_admin_activity(bot, user, label: str, lang: str | None = None):
     """Send admin notification with a clickable mention link so admin can DM the user."""
     try:
         name = html.escape(user.first_name or "—")
@@ -134,9 +144,12 @@ async def notify_admin_activity(bot, user, label: str):
             uname_html = "—"
         mention = f'<a href="tg://user?id={user.id}">{name}</a>'
         id_link = f'<a href="tg://user?id={user.id}">{user.id}</a>'
+        lang_tag = ""
+        if lang:
+            lang_tag = f"\n<i>{html.escape(lang_badge(lang))}</i>"
         text = (
             f"👆 {mention} ({uname_html}, id {id_link})\n"
-            f"{html.escape(label)}"
+            f"{html.escape(label)}{lang_tag}"
         )
         await bot.send_message(ADMIN_CHAT_ID, text, parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True)
@@ -145,70 +158,113 @@ async def notify_admin_activity(bot, user, label: str):
         log.warning("admin activity notify FAILED: %s (user=%s label=%s)",
                     e, user.id, label)
 
-def main_menu_kb():
+# ────────────────────────────────────────────────────────────── keyboards
+
+def language_kb() -> InlineKeyboardMarkup:
+    """Keyboard with flag+native-name buttons for every supported language.
+    Arranged in 2 columns, last row may have a single button."""
+    rows = []
+    row = []
+    for code, flag, native in LANGUAGES:
+        row.append(InlineKeyboardButton(f"{flag} {native}", callback_data=f"setlang:{code}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    return InlineKeyboardMarkup(rows)
+
+def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("❓ Задать вопрос по визе",         callback_data="ask")],
-        [InlineKeyboardButton("📋 Оценить шансы (анкета)",       callback_data="quiz")],
-        [InlineKeyboardButton("🆓 Бесплатный разбор ситуации",   callback_data="case_review")],
-        [InlineKeyboardButton("💰 Стоимость и сроки",            callback_data="pricing")],
-        [InlineKeyboardButton("📞 Записаться на консультацию",   callback_data="book")],
+        [InlineKeyboardButton(t("btn_ask", lang),         callback_data="ask")],
+        [InlineKeyboardButton(t("btn_quiz", lang),        callback_data="quiz")],
+        [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
+        [InlineKeyboardButton(t("btn_pricing", lang),     callback_data="pricing")],
+        [InlineKeyboardButton(t("btn_book", lang),        callback_data="book")],
+        [InlineKeyboardButton(t("btn_lang", lang),        callback_data="lang")],
     ])
 
-def case_review_kb():
+def case_review_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Завершить отправку", callback_data="case_done")],
-        [InlineKeyboardButton("⬅️ В меню",            callback_data="menu")],
+        [InlineKeyboardButton(t("btn_case_done", lang), callback_data="case_done")],
+        [InlineKeyboardButton(t("btn_back", lang),      callback_data="menu")],
     ])
 
-def quiz_select_kb():
+def quiz_select_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("EB-1A (Extraordinary Ability)",  callback_data="quiz:eb1a")],
-        [InlineKeyboardButton("EB-2 NIW (National Interest)",   callback_data="quiz:niw")],
-        [InlineKeyboardButton("O-1 (Extraordinary Ability)",    callback_data="quiz:o1")],
-        [InlineKeyboardButton("E-2 (Treaty Investor)",          callback_data="quiz:e2")],
-        [InlineKeyboardButton("⬅️ В меню", callback_data="menu")],
+        [InlineKeyboardButton(t("btn_quiz_eb1a", lang), callback_data="quiz:eb1a")],
+        [InlineKeyboardButton(t("btn_quiz_niw",  lang), callback_data="quiz:niw")],
+        [InlineKeyboardButton(t("btn_quiz_o1",   lang), callback_data="quiz:o1")],
+        [InlineKeyboardButton(t("btn_quiz_e2",   lang), callback_data="quiz:e2")],
+        [InlineKeyboardButton(t("btn_back",      lang), callback_data="menu")],
     ])
 
-def yes_no_kb():
+def yes_no_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Да",  callback_data="q:yes"),
-        InlineKeyboardButton("❌ Нет", callback_data="q:no"),
+        InlineKeyboardButton(t("btn_yes", lang), callback_data="q:yes"),
+        InlineKeyboardButton(t("btn_no",  lang), callback_data="q:no"),
     ]])
 
-def post_quiz_kb():
+def post_quiz_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📞 Записаться на консультацию", callback_data="book")],
-        [InlineKeyboardButton("⬅️ В меню", callback_data="menu")],
+        [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
     ])
+
+# ────────────────────────────────────────────────────────────── commands
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
     ctx.user_data.clear()
-    await notify_admin_activity(ctx.bot, u, "Отправил /start")
+
+    saved_lang = db.get_user_lang(u.id)
+    await notify_admin_activity(ctx.bot, u, "Отправил /start", saved_lang)
+
+    if not saved_lang:
+        # First-time user or not yet chosen — show multilingual language picker.
+        await update.message.reply_text(
+            i18n.LANGUAGE_PICKER_PROMPT,
+            reply_markup=language_kb(),
+        )
+        return
+
+    lang = normalize_lang(saved_lang)
     await update.message.reply_text(
-        WELCOME, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_kb()
+        t("welcome", lang), parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_kb(lang),
     )
 
 async def cmd_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
-    await update.message.reply_text("Главное меню:", reply_markup=main_menu_kb())
+    lang = user_lang(update.effective_user.id)
+    await update.message.reply_text(t("menu_header", lang), reply_markup=main_menu_kb(lang))
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
+    lang = user_lang(update.effective_user.id)
     await update.message.reply_text(
-        "Контекст сброшен. Выберите действие:",
-        reply_markup=main_menu_kb(),
+        t("context_reset", lang),
+        reply_markup=main_menu_kb(lang),
+    )
+
+async def cmd_lang(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Change language."""
+    await update.message.reply_text(
+        i18n.LANGUAGE_PICKER_PROMPT,
+        reply_markup=language_kb(),
     )
 
 async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Diagnostic: show user's Telegram ID and whether it matches ADMIN_CHAT_ID."""
     u = update.effective_user
     is_admin = u and u.id == ADMIN_CHAT_ID
+    lang = db.get_user_lang(u.id) or "—"
     await update.message.reply_text(
         f"Ваш Telegram user ID: {u.id}\n"
         f"ADMIN ID в настройках бота: {ADMIN_CHAT_ID}\n"
-        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}"
+        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}\n"
+        f"Язык: {lang}"
     )
 
 async def cmd_testnotify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -303,42 +359,70 @@ async def cmd_leads(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(text), 3500):
         await update.message.reply_text(text[i:i + 3500])
 
+# ────────────────────────────────────────────────────────────── callbacks
+
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
+    u = q.from_user
+    lang = user_lang(u.id)
+
+    # Language selection (before main menu is even visible)
+    if data.startswith("setlang:"):
+        new_lang = normalize_lang(data.split(":", 1)[1])
+        db.upsert_user(u.id, u.username, u.first_name)
+        db.set_user_lang(u.id, new_lang)
+        await notify_admin_activity(
+            ctx.bot, u, f"Выбрал язык: {lang_badge(new_lang)}", new_lang,
+        )
+        # Replace the picker with confirmation and then send welcome + menu.
+        await q.edit_message_text(t("language_saved", new_lang),
+                                  parse_mode=ParseMode.MARKDOWN)
+        await ctx.bot.send_message(
+            q.message.chat_id,
+            t("welcome", new_lang),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu_kb(new_lang),
+        )
+        return
 
     if not data.startswith("q:"):
         label = CLICK_LABELS.get(data, f"нажал кнопку: {data}")
-        await notify_admin_activity(ctx.bot, q.from_user, label)
+        await notify_admin_activity(ctx.bot, u, label, lang)
 
     if data == "menu":
         ctx.user_data.clear()
-        await q.edit_message_text("Главное меню:", reply_markup=main_menu_kb())
+        await q.edit_message_text(t("menu_header", lang), reply_markup=main_menu_kb(lang))
+        return
+
+    if data == "lang":
+        await q.edit_message_text(
+            i18n.LANGUAGE_PICKER_PROMPT,
+            reply_markup=language_kb(),
+        )
         return
 
     if data == "ask":
         ctx.user_data[S_MODE] = None
-        left = max(0, DAILY_LIMIT - db.get_today_count(q.from_user.id))
+        left = max(0, DAILY_LIMIT - db.get_today_count(u.id))
         await q.edit_message_text(
-            "Задайте ваш вопрос по EB-1A, EB-2 NIW, O-1, E-2 или убежищу. "
-            "Отвечаю на основе правил USCIS.\n\n"
-            f"_Осталось сообщений сегодня: {left}/{DAILY_LIMIT}_",
+            t("ask_prompt", lang).format(left=left, total=DAILY_LIMIT),
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
     if data == "quiz":
         ctx.user_data[S_MODE] = None
-        await q.edit_message_text(QUIZ_START, reply_markup=quiz_select_kb())
+        await q.edit_message_text(t("quiz_start", lang), reply_markup=quiz_select_kb(lang))
         return
 
     if data.startswith("quiz:"):
         kind = data.split(":", 1)[1]
-        cfg = quiz.get_quiz(kind)
+        cfg = quiz.get_quiz(kind, lang)
         if not cfg:
             await q.edit_message_text(
-                "Неизвестная категория анкеты.", reply_markup=main_menu_kb()
+                t("unknown_quiz", lang), reply_markup=main_menu_kb(lang)
             )
             return
         ctx.user_data[S_MODE]      = "quiz"
@@ -348,9 +432,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(cfg["intro"], parse_mode=ParseMode.MARKDOWN)
         await ctx.bot.send_message(
             q.message.chat_id,
-            f"*Вопрос 1 из {cfg['total']}:*\n\n{cfg['questions'][0]}",
+            t("quiz_q_header", lang).format(n=1, total=cfg["total"], q=cfg["questions"][0]),
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=yes_no_kb(),
+            reply_markup=yes_no_kb(lang),
         )
         return
 
@@ -360,17 +444,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "book":
         ctx.user_data[S_MODE] = "lead"
-        await q.edit_message_text(LEAD_PROMPT, parse_mode=ParseMode.MARKDOWN)
+        await q.edit_message_text(t("lead_prompt", lang), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "pricing":
         ctx.user_data[S_MODE] = None
         await q.edit_message_text(
-            PRICING_TEXT,
+            t("pricing", lang),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📞 Записаться на консультацию", callback_data="book")],
-                [InlineKeyboardButton("⬅️ В меню",                    callback_data="menu")],
+                [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
             ]),
         )
         return
@@ -379,30 +463,19 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = "case_review"
         ctx.user_data["case_review_started"] = False
         await q.edit_message_text(
-            "🆓 *Бесплатный разбор вашей ситуации*\n\n"
-            "⚠️ *Важно:* всё, что вы здесь напишете и приложите, *пересылается живому специалисту* "
-            "— не ИИ-ассистенту. Ответа в боте не будет — эксперт свяжется лично.\n\n"
-            "_Если хотите задать вопрос ИИ — нажмите «⬅️ В меню» и выберите «❓ Задать вопрос по визе»._\n\n"
-            "Опишите вашу ситуацию (профессия, опыт, цели) и при желании прикрепите документы — "
-            "CV, дипломы, статьи, награды, рекомендательные письма.\n\n"
-            "📎 *Как прикрепить файл:* нажмите скрепку слева от поля ввода сообщения внизу экрана → "
-            "выберите «Файл» или «Фото» → отправьте. Принимаются PDF, DOCX, JPG, PNG и др. "
-            "до 2 ГБ за файл.\n\n"
-            "Можно отправить *несколькими сообщениями*. Когда закончите — нажмите *«Завершить отправку»*.\n\n"
-            "_Специалист свяжется в течение 1-2 рабочих дней._",
+            t("case_review_info", lang),
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=case_review_kb(),
+            reply_markup=case_review_kb(lang),
         )
         return
 
     if data == "case_done":
         if ctx.user_data.get(S_MODE) != "case_review":
             await q.edit_message_text(
-                "Эта кнопка уже не активна. Выберите действие:",
-                reply_markup=main_menu_kb(),
+                t("case_button_inactive", lang),
+                reply_markup=main_menu_kb(lang),
             )
             return
-        u = q.from_user
         db.save_lead(u.id, u.username, "Бесплатный разбор кейса (см. пересланные сообщения)", "case_review")
         try:
             await safe_send(
@@ -410,6 +483,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 ADMIN_CHAT_ID,
                 f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
                 f"От: {fmt_user_md(u)}\n"
+                f"Язык: {md_esc(lang_badge(lang))}\n"
                 f"_Все его сообщения и документы пересланы выше._",
                 parse_mode=ParseMode.MARKDOWN,
             )
@@ -418,22 +492,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = None
         ctx.user_data.pop("case_review_started", None)
         await q.edit_message_text(
-            "✅ Спасибо! Эксперт изучит вашу заявку и свяжется с вами в течение "
-            "1-2 рабочих дней.",
-            reply_markup=main_menu_kb(),
+            t("case_review_done", lang),
+            reply_markup=main_menu_kb(lang),
         )
         return
 
 async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_yes: bool):
     q = update.callback_query
+    u = q.from_user
+    lang = user_lang(u.id)
     kind = ctx.user_data.get(S_QUIZ_KIND)
     idx  = ctx.user_data.get(S_QUIZ_IDX, 0)
     ans  = ctx.user_data.get(S_QUIZ_ANS, [])
-    cfg  = quiz.get_quiz(kind)
+    cfg  = quiz.get_quiz(kind, lang)
     if not cfg:
         await q.edit_message_text(
-            "Анкета больше не активна. Выберите действие:",
-            reply_markup=main_menu_kb(),
+            t("quiz_not_active", lang),
+            reply_markup=main_menu_kb(lang),
         )
         return
 
@@ -444,23 +519,38 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
 
     if idx < cfg["total"]:
         await q.edit_message_text(
-            f"*Вопрос {idx+1} из {cfg['total']}:*\n\n{cfg['questions'][idx]}",
+            t("quiz_q_header", lang).format(n=idx + 1, total=cfg["total"], q=cfg["questions"][idx]),
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=yes_no_kb(),
+            reply_markup=yes_no_kb(lang),
         )
         return
 
-    verdict, qualifies = quiz.summarize(kind, ans)
+    verdict_ru, qualifies = quiz.summarize(kind, ans)
+    # Translate verdict for non-Russian users.
+    if lang != "ru":
+        try:
+            verdict_user = await llm.translate(verdict_ru, lang)
+        except Exception:
+            log.exception("verdict translation failed; falling back to Russian")
+            verdict_user = verdict_ru
+    else:
+        verdict_user = verdict_ru
     ctx.user_data[S_MODE] = None
 
-    u = q.from_user
+    # Admin report: always in Russian, use RU questions from prompts.
+    import prompts as _p
+    questions_ru = {
+        "eb1a": _p.EB1A_QUESTIONS, "niw": _p.NIW_QUESTIONS,
+        "o1":   _p.O1_QUESTIONS,   "e2":  _p.E2_QUESTIONS,
+    }.get(kind, cfg["questions"])
     detail = "\n".join(
-        f"{'✅' if a else '❌'} {cfg['questions'][i]}"
+        f"{'✅' if a else '❌'} {questions_ru[i]}"
         for i, a in enumerate(ans)
     )
     admin_txt = (
         f"📋 *Квалификационная анкета завершена*\n\n"
         f"Пользователь: {fmt_user_md(u)}\n"
+        f"Язык: {md_esc(lang_badge(lang))}\n"
         f"Виза: *{md_esc(kind.upper())}*\n"
         f"Результат: {sum(ans)}/{cfg['total']} — "
         f"{'✅ квалифицируется' if qualifies else '⚠️ под вопросом'}\n\n"
@@ -472,18 +562,31 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         log.warning("admin notify failed: %s", e)
     db.save_lead(u.id, u.username, f"{kind}: {sum(ans)}/{cfg['total']}", "quiz")
 
-    await q.edit_message_text(verdict, parse_mode=ParseMode.MARKDOWN, reply_markup=post_quiz_kb())
+    await q.edit_message_text(verdict_user, parse_mode=ParseMode.MARKDOWN,
+                              reply_markup=post_quiz_kb(lang))
+
+# ────────────────────────────────────────────────────────────── messages
 
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
+
+    saved_lang = db.get_user_lang(u.id)
+    if not saved_lang:
+        # User hasn't chosen language yet — prompt them before anything else.
+        await update.message.reply_text(
+            i18n.LANGUAGE_PICKER_PROMPT,
+            reply_markup=language_kb(),
+        )
+        return
+    lang = normalize_lang(saved_lang)
+
     text = update.message.text.strip()
     mode = ctx.user_data.get(S_MODE)
 
     if mode == "quiz":
         await update.message.reply_text(
-            "Вы сейчас проходите анкету — отвечайте кнопками *«✅ Да»* или *«❌ Нет»* "
-            "под вопросом выше. Если хотите выйти из анкеты — /menu.",
+            t("in_quiz_warning", lang),
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -493,14 +596,15 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = None
         admin_txt = (
             f"📞 *Новая заявка на консультацию*\n\n"
-            f"От: {fmt_user_md(u)}\n\n"
+            f"От: {fmt_user_md(u)}\n"
+            f"Язык: {md_esc(lang_badge(lang))}\n\n"
             f"{md_esc(text)}"
         )
         try:
             await safe_send(ctx.bot, ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             log.warning("admin notify failed: %s", e)
-        await update.message.reply_text(LEAD_RECEIVED, reply_markup=main_menu_kb())
+        await update.message.reply_text(t("lead_received", lang), reply_markup=main_menu_kb(lang))
         return
 
     if mode == "case_review":
@@ -510,9 +614,9 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
     if not allowed:
         await update.message.reply_text(
-            LIMIT_REACHED,
+            t("limit_reached", lang),
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("📞 Записаться на консультацию", callback_data="book")
+                InlineKeyboardButton(t("btn_book", lang), callback_data="book")
             ]]),
         )
         return
@@ -521,27 +625,25 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     history = db.recent_history(u.id, limit=8)
     try:
-        answer, offer_consultation = await llm.ask(history, text)
+        answer, offer_consultation = await llm.ask(history, text, lang)
     except Exception:
         log.exception("LLM error")
         db.save_msg(u.id, "user", text)
-        await update.message.reply_text(
-            "Временная ошибка при обращении к базе знаний. Попробуйте ещё раз через минуту."
-        )
+        await update.message.reply_text(t("llm_error", lang))
         return
 
     db.save_msg(u.id, "user", text)
     db.save_msg(u.id, "assistant", answer)
 
     left = DAILY_LIMIT - new_count
-    footer = f"\n\n_Осталось сегодня: {left}/{DAILY_LIMIT}_"
+    footer = t("footer_remaining", lang).format(left=left, total=DAILY_LIMIT)
 
     kb = None
     if offer_consultation:
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📞 Записаться на консультацию",  callback_data="book")],
-            [InlineKeyboardButton("🆓 Бесплатный разбор ситуации", callback_data="case_review")],
-            [InlineKeyboardButton("⬅️ В меню", callback_data="menu")],
+            [InlineKeyboardButton(t("btn_book",        lang), callback_data="book")],
+            [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
+            [InlineKeyboardButton(t("btn_back",        lang), callback_data="menu")],
         ])
 
     parts = split_for_telegram(answer)
@@ -557,6 +659,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
     """Forward a user's text/document/photo to the admin during case_review mode."""
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
+    lang = user_lang(u.id)
 
     if not ctx.user_data.get("case_review_started"):
         try:
@@ -565,6 +668,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
                 ADMIN_CHAT_ID,
                 f"🆓 *Новая заявка на бесплатный разбор*\n\n"
                 f"От: {fmt_user_md(u)}\n"
+                f"Язык: {md_esc(lang_badge(lang))}\n"
                 f"_Ниже пересылаются его сообщения и документы:_",
                 parse_mode=ParseMode.MARKDOWN,
             )
@@ -585,22 +689,20 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
 
     if forwarded:
         await update.message.reply_text(
-            "✓ Передал специалисту. Он ответит лично (не через бот) в течение "
-            "1-2 рабочих дней.\n\n"
-            "Можно отправить ещё материалы или нажать «Завершить отправку».",
-            reply_markup=case_review_kb(),
+            t("case_review_forwarded", lang),
+            reply_markup=case_review_kb(lang),
         )
     else:
         await update.message.reply_text(
-            "⚠️ Не удалось передать это сообщение специалисту. "
-            "Попробуйте ещё раз или напишите текстом в «Записаться на консультацию».",
-            reply_markup=case_review_kb(),
+            t("case_review_forward_failed", lang),
+            reply_markup=case_review_kb(lang),
         )
 
 async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Forward attachment sent during lead (booking) mode to the admin."""
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
+    lang = user_lang(u.id)
     db.save_lead(u.id, u.username, "Файл приложен к заявке (см. пересланное сообщение)", "booking_file")
     try:
         await safe_send(
@@ -608,6 +710,7 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
             ADMIN_CHAT_ID,
             f"📎 *Файл к заявке на консультацию*\n\n"
             f"От: {fmt_user_md(u)}\n"
+            f"Язык: {md_esc(lang_badge(lang))}\n"
             f"_Файл пересылается ниже._",
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -626,17 +729,22 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
         log.warning("forward failed: %s", e)
 
     if forwarded:
-        await update.message.reply_text(
-            "✓ Файл получен. Если ещё не прислали имя и описание — пришлите одним сообщением."
-        )
+        await update.message.reply_text(t("booking_file_ok", lang))
     else:
-        await update.message.reply_text(
-            "⚠️ Не удалось передать файл специалисту. Попробуйте ещё раз "
-            "или опишите ситуацию текстом."
-        )
+        await update.message.reply_text(t("booking_file_failed", lang))
 
 async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle non-text messages (documents/photos/voice/video/audio)."""
+    u = update.effective_user
+    saved_lang = db.get_user_lang(u.id)
+    if not saved_lang:
+        await update.message.reply_text(
+            i18n.LANGUAGE_PICKER_PROMPT,
+            reply_markup=language_kb(),
+        )
+        return
+    lang = normalize_lang(saved_lang)
+
     mode = ctx.user_data.get(S_MODE)
     if mode == "case_review":
         await _forward_case_review(update, ctx, "attachment")
@@ -645,9 +753,8 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _forward_booking_attachment(update, ctx)
         return
     await update.message.reply_text(
-        "Чтобы отправить документы — выберите в меню «🆓 Бесплатный разбор ситуации» "
-        "или «📞 Записаться на консультацию».",
-        reply_markup=main_menu_kb(),
+        t("attachment_hint", lang),
+        reply_markup=main_menu_kb(lang),
     )
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
@@ -693,6 +800,8 @@ def main():
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("menu",    cmd_menu))
     app.add_handler(CommandHandler("reset",   cmd_reset))
+    app.add_handler(CommandHandler("lang",    cmd_lang))
+    app.add_handler(CommandHandler("language", cmd_lang))
     app.add_handler(CommandHandler("whoami",      cmd_whoami))
     app.add_handler(CommandHandler("testnotify",  cmd_testnotify))
     app.add_handler(CommandHandler("users",       cmd_users))

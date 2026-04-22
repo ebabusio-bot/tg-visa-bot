@@ -18,6 +18,7 @@ def init_db():
             tg_id INTEGER PRIMARY KEY,
             username TEXT,
             first_name TEXT,
+            lang TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS daily_count (
@@ -42,12 +43,31 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
         """)
+        # Migrate: add lang column to existing users table if missing.
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+        if "lang" not in cols:
+            c.execute("ALTER TABLE users ADD COLUMN lang TEXT")
 
 def upsert_user(tg_id: int, username: str | None, first_name: str | None):
     with _conn() as c:
         c.execute(
             "INSERT OR IGNORE INTO users(tg_id, username, first_name) VALUES(?,?,?)",
             (tg_id, username, first_name),
+        )
+
+def get_user_lang(tg_id: int) -> str | None:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT lang FROM users WHERE tg_id=?", (tg_id,),
+        ).fetchone()
+        return row["lang"] if row and row["lang"] else None
+
+def set_user_lang(tg_id: int, lang: str):
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO users(tg_id, lang) VALUES(?,?) "
+            "ON CONFLICT(tg_id) DO UPDATE SET lang=excluded.lang",
+            (tg_id, lang),
         )
 
 def get_today_count(tg_id: int) -> int:

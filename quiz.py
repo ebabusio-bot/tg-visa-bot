@@ -1,24 +1,32 @@
 # -*- coding: utf-8 -*-
 """Qualification quizzes for EB-1A / EB-2 NIW / O-1 / E-2."""
-from prompts import (
-    EB1A_QUESTIONS, NIW_QUESTIONS, O1_QUESTIONS, E2_QUESTIONS,
-    QUIZ_EB1A_INTRO, QUIZ_NIW_INTRO, QUIZ_O1_INTRO, QUIZ_E2_INTRO,
-)
+from i18n import t
 
-QUIZZES = {
-    "eb1a": {"intro": QUIZ_EB1A_INTRO, "questions": EB1A_QUESTIONS, "needed": 3, "total": 10},
-    "niw":  {"intro": QUIZ_NIW_INTRO,  "questions": NIW_QUESTIONS,  "needed": 3, "total": 3},
-    "o1":   {"intro": QUIZ_O1_INTRO,   "questions": O1_QUESTIONS,   "needed": 3, "total": 8},
-    "e2":   {"intro": QUIZ_E2_INTRO,   "questions": E2_QUESTIONS,   "needed": 7, "total": 7},
+_SPEC = {
+    "eb1a": {"intro_key": "quiz_intro_eb1a", "q_key": "eb1a_questions", "needed": 3, "total": 10},
+    "niw":  {"intro_key": "quiz_intro_niw",  "q_key": "niw_questions",  "needed": 3, "total": 3},
+    "o1":   {"intro_key": "quiz_intro_o1",   "q_key": "o1_questions",   "needed": 3, "total": 8},
+    "e2":   {"intro_key": "quiz_intro_e2",   "q_key": "e2_questions",   "needed": 7, "total": 7},
 }
 
-def get_quiz(kind: str):
-    return QUIZZES.get(kind)
+def get_quiz(kind: str, lang: str = "ru"):
+    """Return localized quiz config for the given kind and language."""
+    spec = _SPEC.get(kind)
+    if not spec:
+        return None
+    return {
+        "intro":     t(spec["intro_key"], lang),
+        "questions": t(spec["q_key"], lang),
+        "needed":    spec["needed"],
+        "total":     spec["total"],
+    }
 
 def summarize(kind: str, answers: list[bool]) -> tuple[str, bool]:
     """
-    Returns (summary_text, qualifies_flag).
-    qualifies_flag=True means the applicant meets the threshold.
+    Returns (summary_text_in_Russian, qualifies_flag).
+    The verdict is authored in Russian; bot.py translates it to the user's
+    language via llm.translate() if needed. Keeping verdicts in one language
+    keeps the logic deterministic and lets us rely on USCIS numeric facts.
     """
     yes = sum(answers)
 
