@@ -540,6 +540,14 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         )
         return
 
+    # Notify admin of each yes/no answer so the whole quiz progress is visible.
+    answer_mark = "✅ Да" if is_yes else "❌ Нет"
+    await notify_admin_activity(
+        ctx.bot, u,
+        f"📋 Квиз {kind.upper()} · В{idx + 1}/{cfg['total']} · {answer_mark}",
+        lang,
+    )
+
     ans.append(is_yes)
     idx += 1
     ctx.user_data[S_QUIZ_ANS] = ans
