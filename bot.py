@@ -221,8 +221,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     saved_lang = db.get_user_lang(u.id)
     await notify_admin_activity(ctx.bot, u, "Отправил /start", saved_lang)
 
-    if not saved_lang:
-        # First-time user or not yet chosen — show multilingual language picker.
+    if saved_lang not in i18n.LANG_CODES:
+        # Either first-time user, or saved language is no longer supported
+        # (e.g. a Bengali user from before we trimmed the supported set).
+        # Show the picker and let them re-select.
         await update.message.reply_text(
             i18n.LANGUAGE_PICKER_PROMPT,
             reply_markup=language_kb(),
@@ -583,8 +585,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.upsert_user(u.id, u.username, u.first_name)
 
     saved_lang = db.get_user_lang(u.id)
-    if not saved_lang:
-        # User hasn't chosen language yet — prompt them before anything else.
+    if saved_lang not in i18n.LANG_CODES:
+        # Not chosen yet, or previously chosen a now-unsupported language.
         await update.message.reply_text(
             i18n.LANGUAGE_PICKER_PROMPT,
             reply_markup=language_kb(),
@@ -748,7 +750,7 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle non-text messages (documents/photos/voice/video/audio)."""
     u = update.effective_user
     saved_lang = db.get_user_lang(u.id)
-    if not saved_lang:
+    if saved_lang not in i18n.LANG_CODES:
         await update.message.reply_text(
             i18n.LANGUAGE_PICKER_PROMPT,
             reply_markup=language_kb(),
