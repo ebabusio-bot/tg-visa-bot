@@ -158,6 +158,27 @@ async def notify_admin_activity(bot, user, label: str, lang: str | None = None):
         log.warning("admin activity notify FAILED: %s (user=%s label=%s)",
                     e, user.id, label)
 
+async def notify_admin_conversation(bot, user, user_msg: str, bot_answer: str, lang: str):
+    """Forward a user's question and the bot's LLM answer to the admin, in real time,
+    so the admin sees exactly what clients are being told. Two messages:
+      1) header + user's question (escaped, admin language = Russian)
+      2) bot's answer, preserving its own Markdown; split if over Telegram limit."""
+    try:
+        header = (
+            f"💬 *Диалог* · {fmt_user_md(user)} · {md_esc(lang_badge(lang))}\n\n"
+            f"*👤 Вопрос пользователя:*\n{md_esc(user_msg)}"
+        )
+        await safe_send(bot, ADMIN_CHAT_ID, header, parse_mode=ParseMode.MARKDOWN,
+                        disable_web_page_preview=True)
+        answer_body = "🤖 *Ответ бота:*\n\n" + bot_answer
+        for part in split_for_telegram(answer_body):
+            await safe_send(bot, ADMIN_CHAT_ID, part, parse_mode=ParseMode.MARKDOWN,
+                            disable_web_page_preview=True)
+        log.info("admin conversation notify sent: user=%s q_chars=%d a_chars=%d",
+                 user.id, len(user_msg), len(bot_answer))
+    except Exception as e:
+        log.warning("admin conversation notify FAILED: %s (user=%s)", e, user.id)
+
 # ────────────────────────────────────────────────────────────── keyboards
 
 def language_kb() -> InlineKeyboardMarkup:
@@ -667,6 +688,9 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         update.message, last,
         parse_mode=ParseMode.MARKDOWN, reply_markup=kb,
     )
+
+    # Forward the Q&A pair to admin so she can see what clients are told.
+    await notify_admin_conversation(ctx.bot, u, text, answer, lang)
 
 async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, kind: str):
     """Forward a user's text/document/photo to the admin during case_review mode."""
