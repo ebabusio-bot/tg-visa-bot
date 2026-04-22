@@ -377,9 +377,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ctx.bot, u, f"Выбрал язык: {lang_badge(new_lang)}", new_lang,
         )
         # Replace the picker with confirmation and then send welcome + menu.
-        await q.edit_message_text(t("language_saved", new_lang),
-                                  parse_mode=ParseMode.MARKDOWN)
-        await ctx.bot.send_message(
+        try:
+            await q.edit_message_text(t("language_saved", new_lang),
+                                      parse_mode=ParseMode.MARKDOWN)
+        except BadRequest:
+            # Fallback if the picker message is no longer editable.
+            log.info("could not edit language picker message; sending fresh confirmation")
+        await safe_send(
+            ctx.bot,
             q.message.chat_id,
             t("welcome", new_lang),
             parse_mode=ParseMode.MARKDOWN,
@@ -531,8 +536,14 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         try:
             verdict_user = await llm.translate(verdict_ru, lang)
         except Exception:
-            log.exception("verdict translation failed; falling back to Russian")
-            verdict_user = verdict_ru
+            log.exception("verdict translation failed; falling back to Russian + note")
+            # Prepend a short English note so a non-RU reader at least
+            # knows why the text is in Cyrillic, and can tap the book button.
+            verdict_user = (
+                "_⚠️ Translation service is temporarily unavailable — the verdict "
+                "is shown in Russian. Tap below to book a consultation or open the menu._\n\n"
+                + verdict_ru
+            )
     else:
         verdict_user = verdict_ru
     ctx.user_data[S_MODE] = None
