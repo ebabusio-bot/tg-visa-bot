@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Telegram bot: US immigration assistant for EB-1A / EB-2 NIW / O-1."""
+import html
 import logging
 import os
 from dotenv import load_dotenv
@@ -45,6 +46,18 @@ def md_esc(s: str | None) -> str:
     if not s:
         return ""
     return escape_markdown(str(s), version=1)
+
+def fmt_user_md(u) -> str:
+    """Markdown-v1 user descriptor with clickable name + id (opens DM/profile)."""
+    name = md_esc(u.first_name) or "—"
+    if u.username:
+        uname_md = f"[@{u.username}](https://t.me/{u.username})"
+    else:
+        uname_md = "—"
+    return (
+        f"[{name}](tg://user?id={u.id}) "
+        f"({uname_md}, id [{u.id}](tg://user?id={u.id}))"
+    )
 
 TG_MSG_SAFE = 3900  # Telegram limit is 4096; leave headroom for footer/markup
 
@@ -112,12 +125,21 @@ CLICK_LABELS = {
 }
 
 async def notify_admin_activity(bot, user, label: str):
-    """Send a compact activity notification to the admin chat (plain text, no markdown)."""
+    """Send admin notification with a clickable mention link so admin can DM the user."""
     try:
-        uname = f"@{user.username}" if user.username else "—"
-        name = user.first_name or "—"
-        text = f"👆 {name} ({uname}, id {user.id})\n{label}"
-        await bot.send_message(ADMIN_CHAT_ID, text)
+        name = html.escape(user.first_name or "—")
+        if user.username:
+            uname_html = f'<a href="https://t.me/{user.username}">@{user.username}</a>'
+        else:
+            uname_html = "—"
+        mention = f'<a href="tg://user?id={user.id}">{name}</a>'
+        id_link = f'<a href="tg://user?id={user.id}">{user.id}</a>'
+        text = (
+            f"👆 {mention} ({uname_html}, id {id_link})\n"
+            f"{html.escape(label)}"
+        )
+        await bot.send_message(ADMIN_CHAT_ID, text, parse_mode=ParseMode.HTML,
+                               disable_web_page_preview=True)
         log.info("admin activity notify sent: user=%s label=%s", user.id, label)
     except Exception as e:
         log.warning("admin activity notify FAILED: %s (user=%s label=%s)",
@@ -387,7 +409,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 ctx.bot,
                 ADMIN_CHAT_ID,
                 f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
-                f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
+                f"От: {fmt_user_md(u)}\n"
                 f"_Все его сообщения и документы пересланы выше._",
                 parse_mode=ParseMode.MARKDOWN,
             )
@@ -438,7 +460,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     )
     admin_txt = (
         f"📋 *Квалификационная анкета завершена*\n\n"
-        f"Пользователь: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id {u.id})\n"
+        f"Пользователь: {fmt_user_md(u)}\n"
         f"Виза: *{md_esc(kind.upper())}*\n"
         f"Результат: {sum(ans)}/{cfg['total']} — "
         f"{'✅ квалифицируется' if qualifies else '⚠️ под вопросом'}\n\n"
@@ -471,7 +493,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_MODE] = None
         admin_txt = (
             f"📞 *Новая заявка на консультацию*\n\n"
-            f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id {u.id})\n\n"
+            f"От: {fmt_user_md(u)}\n\n"
             f"{md_esc(text)}"
         )
         try:
@@ -542,7 +564,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
                 ctx.bot,
                 ADMIN_CHAT_ID,
                 f"🆓 *Новая заявка на бесплатный разбор*\n\n"
-                f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
+                f"От: {fmt_user_md(u)}\n"
                 f"_Ниже пересылаются его сообщения и документы:_",
                 parse_mode=ParseMode.MARKDOWN,
             )
@@ -585,7 +607,7 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
             ctx.bot,
             ADMIN_CHAT_ID,
             f"📎 *Файл к заявке на консультацию*\n\n"
-            f"От: {md_esc(u.first_name)} (@{md_esc(u.username) or '—'}, id `{u.id}`)\n"
+            f"От: {fmt_user_md(u)}\n"
             f"_Файл пересылается ниже._",
             parse_mode=ParseMode.MARKDOWN,
         )
