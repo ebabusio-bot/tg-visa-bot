@@ -132,6 +132,7 @@ CLICK_LABELS = {
     "pricing":     "💰 Стоимость и сроки",
     "book":        "📞 Записаться на консультацию",
     "case_done":   "✅ Завершить отправку (case review)",
+    "support":     "🛠 Обратиться в техподдержку",
     "quiz:eb1a":   "Выбрал квиз: EB-1A",
     "quiz:niw":    "Выбрал квиз: EB-2 NIW",
     "quiz:o1":     "Выбрал квиз: O-1",
@@ -219,6 +220,7 @@ def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
         [InlineKeyboardButton(t("btn_pricing", lang),     callback_data="pricing")],
         [InlineKeyboardButton(t("btn_book", lang),        callback_data="book")],
+        [InlineKeyboardButton(t("btn_support", lang),     callback_data="support")],
         [InlineKeyboardButton(t("btn_lang", lang),        callback_data="lang")],
     ])
 
@@ -708,6 +710,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "support":
+        ctx.user_data[S_MODE] = "support"
+        await q.edit_message_text(
+            t("support_info", lang),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ]),
+        )
+        return
+
 async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_yes: bool):
     q = update.callback_query
     u = q.from_user
@@ -838,6 +851,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _forward_case_review(update, ctx, "text")
         return
 
+    if mode == "support":
+        await _forward_support(update, ctx)
+        return
+
     allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
     if not allowed:
         await update.message.reply_text(
@@ -929,6 +946,40 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
             reply_markup=case_review_kb(lang),
         )
 
+async def _forward_support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Forward a user's tech-support message/attachment to the admin, then exit
+    support mode. One message per request — to send more, the user taps again."""
+    u = update.effective_user
+    db.upsert_user(u.id, u.username, u.first_name)
+    lang = user_lang(u.id)
+
+    delivered = True
+    try:
+        await safe_send(
+            ctx.bot,
+            ADMIN_CHAT_ID,
+            f"🛠 *Обращение в техподдержку*\n\n"
+            f"От: {fmt_user_md(u)}\n"
+            f"Язык: {md_esc(lang_badge(lang))}\n"
+            f"_Сообщение пользователя ниже:_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await ctx.bot.forward_message(
+            chat_id=ADMIN_CHAT_ID,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+        )
+    except Exception as e:
+        delivered = False
+        log.warning("support forward failed: %s", e)
+
+    db.save_lead(u.id, u.username,
+                 "Обращение в техподдержку (см. пересланное сообщение)", "support")
+    db.log_event(u.id, "support")
+    ctx.user_data[S_MODE] = None
+    key = "support_sent" if delivered else "support_failed"
+    await update.message.reply_text(t(key, lang), reply_markup=main_menu_kb(lang))
+
 async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Forward attachment sent during lead (booking) mode to the admin."""
     u = update.effective_user
@@ -979,6 +1030,9 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     mode = ctx.user_data.get(S_MODE)
     if mode == "case_review":
         await _forward_case_review(update, ctx, "attachment")
+        return
+    if mode == "support":
+        await _forward_support(update, ctx)
         return
     if mode == "lead":
         await _forward_booking_attachment(update, ctx)

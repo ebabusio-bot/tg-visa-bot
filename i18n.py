@@ -74,6 +74,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Стоимость и сроки",
         "btn_book": "📞 Записаться на консультацию",
         "btn_back": "⬅️ В меню",
+        "btn_support": "🛠 Техподдержка",
+        "support_info": (
+            "🛠 *Техподдержка*\n\n"
+            "Напишите следующим сообщением ваш вопрос или проблему с работой бота — "
+            "оно будет передано в поддержку. Можно приложить скриншот."
+        ),
+        "support_sent": (
+            "✅ Ваше сообщение передано в техподдержку. "
+            "Мы свяжемся с вами в ближайшее время."
+        ),
+        "support_failed": (
+            "⚠️ Не удалось передать сообщение. Попробуйте ещё раз позже."
+        ),
         "btn_reminder_resume": "📋 Доделать квиз",
         "reminder_quiz_incomplete": (
             "👋 Вы начали оценку шансов по *{kind}*, но не завершили её. "
@@ -269,6 +282,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Вартість і терміни",
         "btn_book": "📞 Записатися на консультацію",
         "btn_back": "⬅️ До меню",
+        "btn_support": "🛠 Техпідтримка",
+        "support_info": (
+            "🛠 *Техпідтримка*\n\n"
+            "Напишіть наступним повідомленням ваше запитання або проблему з роботою бота — "
+            "воно буде передане в підтримку. Можна додати скриншот."
+        ),
+        "support_sent": (
+            "✅ Ваше повідомлення передано в техпідтримку. "
+            "Ми зв'яжемося з вами найближчим часом."
+        ),
+        "support_failed": (
+            "⚠️ Не вдалося передати повідомлення. Спробуйте ще раз пізніше."
+        ),
         "btn_reminder_resume": "📋 Завершити анкету",
         "reminder_quiz_incomplete": (
             "👋 Ви розпочали оцінку шансів за *{kind}*, але не завершили її. "
@@ -474,6 +500,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pricing & timelines",
         "btn_book": "📞 Book a consultation",
         "btn_back": "⬅️ Back to menu",
+        "btn_support": "🛠 Tech support",
+        "support_info": (
+            "🛠 *Tech support*\n\n"
+            "Send your question or any issue with the bot in your next message — "
+            "it will be forwarded to support. You can attach a screenshot."
+        ),
+        "support_sent": (
+            "✅ Your message has been sent to tech support. "
+            "We'll get back to you soon."
+        ),
+        "support_failed": (
+            "⚠️ Couldn't send your message. Please try again later."
+        ),
         "btn_reminder_resume": "📋 Resume quiz",
         "reminder_quiz_incomplete": (
             "👋 You started the *{kind}* eligibility assessment but didn't finish. "
@@ -667,6 +706,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Precios y plazos",
         "btn_book": "📞 Reservar consulta",
         "btn_back": "⬅️ Al menú",
+        "btn_support": "🛠 Soporte técnico",
+        "support_info": (
+            "🛠 *Soporte técnico*\n\n"
+            "Escriba en su próximo mensaje su pregunta o problema con el bot — "
+            "se enviará al soporte. Puede adjuntar una captura de pantalla."
+        ),
+        "support_sent": (
+            "✅ Su mensaje se ha enviado al soporte técnico. "
+            "Nos pondremos en contacto pronto."
+        ),
+        "support_failed": (
+            "⚠️ No se pudo enviar el mensaje. Inténtelo de nuevo más tarde."
+        ),
         "btn_reminder_resume": "📋 Continuar el cuestionario",
         "reminder_quiz_incomplete": (
             "👋 Empezaste la evaluación de elegibilidad para *{kind}* pero no la terminaste. "
@@ -859,6 +911,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Tarifs et délais",
         "btn_book": "📞 Réserver une consultation",
         "btn_back": "⬅️ Au menu",
+        "btn_support": "🛠 Assistance technique",
+        "support_info": (
+            "🛠 *Assistance technique*\n\n"
+            "Envoyez dans votre prochain message votre question ou tout problème avec le bot — "
+            "il sera transmis à l'assistance. Vous pouvez joindre une capture d'écran."
+        ),
+        "support_sent": (
+            "✅ Votre message a été transmis à l'assistance technique. "
+            "Nous vous répondrons bientôt."
+        ),
+        "support_failed": (
+            "⚠️ Impossible d'envoyer le message. Veuillez réessayer plus tard."
+        ),
         "btn_reminder_resume": "📋 Reprendre le quiz",
         "reminder_quiz_incomplete": (
             "👋 Vous avez commencé l'évaluation d'éligibilité *{kind}* mais ne l'avez pas terminée. "
@@ -1051,6 +1116,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pri ak dele",
         "btn_book": "📞 Pran yon konsiltasyon",
         "btn_back": "⬅️ Tounen nan meni",
+        "btn_support": "🛠 Sipò teknik",
+        "support_info": (
+            "🛠 *Sipò teknik*\n\n"
+            "Voye nan pwochen mesaj ou kesyon ou oswa nenpòt pwoblèm ak bot la — "
+            "l ap voye bay sipò a. Ou ka mete yon kapti ekran."
+        ),
+        "support_sent": (
+            "✅ Mesaj ou voye bay sipò teknik. "
+            "N ap kontakte ou byento."
+        ),
+        "support_failed": (
+            "⚠️ Nou pa t kapab voye mesaj ou. Tanpri eseye ankò pita."
+        ),
         "btn_reminder_resume": "📋 Kontinye kesyonè a",
         "reminder_quiz_incomplete": (
             "👋 Ou te kòmanse evalyasyon kalifikasyon *{kind}* la men ou pa fini l. "
@@ -1242,6 +1320,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Preços e prazos",
         "btn_book": "📞 Agendar consulta",
         "btn_back": "⬅️ Ao menu",
+        "btn_support": "🛠 Suporte técnico",
+        "support_info": (
+            "🛠 *Suporte técnico*\n\n"
+            "Envie na próxima mensagem a sua pergunta ou qualquer problema com o bot — "
+            "será encaminhada ao suporte. Pode anexar uma captura de tela."
+        ),
+        "support_sent": (
+            "✅ A sua mensagem foi enviada ao suporte técnico. "
+            "Entraremos em contato em breve."
+        ),
+        "support_failed": (
+            "⚠️ Não foi possível enviar a mensagem. Tente novamente mais tarde."
+        ),
         "btn_reminder_resume": "📋 Continuar o questionário",
         "reminder_quiz_incomplete": (
             "👋 Você começou a avaliação de elegibilidade para *{kind}* mas não a terminou. "
@@ -1433,6 +1524,19 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 शुल्क और समयसीमा",
         "btn_book": "📞 परामर्श बुक करें",
         "btn_back": "⬅️ मेनू पर",
+        "btn_support": "🛠 तकनीकी सहायता",
+        "support_info": (
+            "🛠 *तकनीकी सहायता*\n\n"
+            "अपना प्रश्न या बॉट से जुड़ी कोई समस्या अगले संदेश में भेजें — "
+            "इसे सहायता टीम को भेज दिया जाएगा। आप स्क्रीनशॉट भी संलग्न कर सकते हैं।"
+        ),
+        "support_sent": (
+            "✅ आपका संदेश तकनीकी सहायता को भेज दिया गया है। "
+            "हम जल्द ही आपसे संपर्क करेंगे।"
+        ),
+        "support_failed": (
+            "⚠️ संदेश भेजा नहीं जा सका। कृपया बाद में पुनः प्रयास करें।"
+        ),
         "btn_reminder_resume": "📋 क्विज़ जारी रखें",
         "reminder_quiz_incomplete": (
             "👋 आपने *{kind}* के लिए पात्रता मूल्यांकन शुरू किया था लेकिन पूरा नहीं किया। "
