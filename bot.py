@@ -515,6 +515,29 @@ async def job_check_reengagement(ctx: ContextTypes.DEFAULT_TYPE):
     for tg_id in db.find_reengagement_targets():
         await send_reengagement(ctx.bot, tg_id)
 
+async def send_lead_followup(bot, tg_id: int):
+    """Warm up a user who left a lead but hasn't been closed yet."""
+    user_row = db.get_user_for_reminder(tg_id)
+    lang = (user_row and user_row.get("lang")) or "ru"
+    text = t("reminder_lead_followup", lang)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+        [InlineKeyboardButton(t("btn_ask", lang),  callback_data="ask")],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+    ])
+    try:
+        await bot.send_message(tg_id, text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+        log.info("lead follow-up sent: user=%s", tg_id)
+    except Exception as e:
+        log.warning("lead follow-up FAILED: user=%s err=%s", tg_id, e)
+    finally:
+        db.mark_lead_followup(tg_id)
+
+async def job_check_lead_followup(ctx: ContextTypes.DEFAULT_TYPE):
+    """Periodic job: warm up users who left a lead 24-48h ago."""
+    for tg_id in db.find_lead_followup_targets():
+        await send_lead_followup(ctx.bot, tg_id)
+
 # ─── heartbeat (consumed by the standalone healthcheck.py service) ──────────
 
 HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "heartbeat")
@@ -1085,6 +1108,7 @@ def main():
     app.job_queue.run_repeating(job_heartbeat, interval=60, first=1)
     app.job_queue.run_repeating(job_check_reminders, interval=1800, first=300)
     app.job_queue.run_repeating(job_check_reengagement, interval=3600, first=600)
+    app.job_queue.run_repeating(job_check_lead_followup, interval=3600, first=900)
     app.job_queue.run_daily(job_daily_summary, time=dt_time(9, 0, tzinfo=ADMIN_TZ))
     log.info("Bot started. Model=%s, daily_limit=%d", llm.MODEL, DAILY_LIMIT)
     app.run_polling(allowed_updates=Update.ALL_TYPES)

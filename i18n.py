@@ -96,6 +96,11 @@ T: dict[str, dict[str, object]] = {
             "👋 Вчера вы заходили к ИИ-ассистенту по иммиграции в США. "
             "Могу ли я ответить на ваши вопросы?"
         ),
+        "reminder_lead_followup": (
+            "👋 Здравствуйте! Недавно вы оставили заявку — наши специалисты "
+            "готовы разобрать вашу ситуацию. Подскажите, как вам удобнее: "
+            "звонок или переписка? Если появились новые вопросы — задайте их здесь."
+        ),
         "btn_case_done": "✅ Завершить отправку",
         "btn_yes": "✅ Да",
         "btn_no": "❌ Нет",
@@ -303,6 +308,11 @@ T: dict[str, dict[str, object]] = {
         "reminder_reengagement": (
             "👋 Вчора ви заходили до ШІ-асистента з імміграції до США. "
             "Чи можу я відповісти на ваші запитання?"
+        ),
+        "reminder_lead_followup": (
+            "👋 Вітаємо! Нещодавно ви залишили заявку — наші спеціалісти "
+            "готові розібрати вашу ситуацію. Підкажіть, як вам зручніше: "
+            "дзвінок чи листування? Якщо з'явилися нові питання — поставте їх тут."
         ),
         "btn_case_done": "✅ Завершити надсилання",
         "btn_yes": "✅ Так",
@@ -522,6 +532,11 @@ T: dict[str, dict[str, object]] = {
             "👋 Yesterday you visited the AI assistant for US immigration. "
             "Can I answer any questions for you?"
         ),
+        "reminder_lead_followup": (
+            "👋 Hello! You recently left a request — our specialists are ready "
+            "to review your situation. Let us know what works better for you: "
+            "a call or a chat. If new questions came up, ask them here."
+        ),
         "btn_case_done": "✅ Finish sending",
         "btn_yes": "✅ Yes",
         "btn_no": "❌ No",
@@ -728,6 +743,11 @@ T: dict[str, dict[str, object]] = {
             "👋 Ayer visitó el asistente de IA para inmigración a EE. UU. "
             "¿Puedo responder a alguna pregunta?"
         ),
+        "reminder_lead_followup": (
+            "👋 ¡Hola! Recientemente dejó una solicitud — nuestros especialistas "
+            "están listos para revisar su situación. Díganos qué prefiere: "
+            "una llamada o un chat. Si surgieron nuevas preguntas, hágalas aquí."
+        ),
         "btn_case_done": "✅ Terminar envío",
         "btn_yes": "✅ Sí",
         "btn_no": "❌ No",
@@ -932,6 +952,11 @@ T: dict[str, dict[str, object]] = {
         "reminder_reengagement": (
             "👋 Hier, vous avez consulté l'assistant IA pour l'immigration aux États-Unis. "
             "Puis-je répondre à vos questions ?"
+        ),
+        "reminder_lead_followup": (
+            "👋 Bonjour ! Vous avez récemment laissé une demande — nos spécialistes "
+            "sont prêts à étudier votre situation. Dites-nous ce qui vous convient le mieux : "
+            "un appel ou un échange écrit. Si de nouvelles questions sont apparues, posez-les ici."
         ),
         "btn_case_done": "✅ Terminer l'envoi",
         "btn_yes": "✅ Oui",
@@ -1138,6 +1163,11 @@ T: dict[str, dict[str, object]] = {
             "👋 Yè ou te vizite asistan IA pou imigrasyon Ozetazini an. "
             "Èske mwen ka reponn nenpòt kesyon pou ou?"
         ),
+        "reminder_lead_followup": (
+            "👋 Bonjou! Resamman ou te kite yon demann — espesyalis nou yo pare "
+            "pou egzamine sitiyasyon ou. Fè nou konnen sa ki pi bon pou ou: "
+            "yon apèl oswa yon chat. Si gen nouvo kesyon, poze yo isit la."
+        ),
         "btn_case_done": "✅ Fini voye",
         "btn_yes": "✅ Wi",
         "btn_no": "❌ Non",
@@ -1342,6 +1372,11 @@ T: dict[str, dict[str, object]] = {
             "👋 Ontem você visitou o assistente de IA para imigração nos EUA. "
             "Posso responder a alguma pergunta?"
         ),
+        "reminder_lead_followup": (
+            "👋 Olá! Você deixou recentemente uma solicitação — nossos especialistas "
+            "estão prontos para analisar a sua situação. Diga-nos o que prefere: "
+            "uma ligação ou uma conversa por mensagem. Se surgiram novas perguntas, faça-as aqui."
+        ),
         "btn_case_done": "✅ Concluir envio",
         "btn_yes": "✅ Sim",
         "btn_no": "❌ Não",
@@ -1545,6 +1580,11 @@ T: dict[str, dict[str, object]] = {
         "reminder_reengagement": (
             "👋 कल आपने अमेरिका आप्रवासन के लिए AI सहायक का दौरा किया था। "
             "क्या मैं आपके किसी प्रश्न का उत्तर दे सकता हूँ?"
+        ),
+        "reminder_lead_followup": (
+            "👋 नमस्ते! आपने हाल ही में एक अनुरोध छोड़ा था — हमारे विशेषज्ञ "
+            "आपकी स्थिति की समीक्षा करने के लिए तैयार हैं। बताएं कि आपके लिए क्या बेहतर है: "
+            "कॉल या चैट। यदि नए प्रश्न हैं, तो यहाँ पूछें।"
         ),
         "btn_case_done": "✅ भेजना समाप्त करें",
         "btn_yes": "✅ हाँ",

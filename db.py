@@ -63,6 +63,10 @@ def init_db():
             tg_id INTEGER PRIMARY KEY,
             reminded_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS lead_followup (
+            tg_id INTEGER PRIMARY KEY,
+            sent_at TEXT DEFAULT (datetime('now'))
+        );
         """)
         # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -383,4 +387,26 @@ def mark_reengaged(tg_id: int):
     with _conn() as c:
         c.execute(
             "INSERT OR IGNORE INTO reengagement(tg_id) VALUES(?)", (tg_id,),
+        )
+
+def find_lead_followup_targets() -> list[int]:
+    """Users whose first lead was left 24-48h ago and who have not yet
+    received a follow-up nudge. 'Left a lead' means they raised their hand —
+    this warm-up keeps them from going cold before the firm closes them."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT l.tg_id, MIN(l.created_at) AS first_lead "
+            "FROM leads l "
+            "WHERE l.tg_id NOT IN (SELECT tg_id FROM lead_followup) "
+            "GROUP BY l.tg_id "
+            "HAVING first_lead <= datetime('now', '-24 hours') "
+            "AND first_lead >= datetime('now', '-48 hours')"
+        ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+def mark_lead_followup(tg_id: int):
+    """Record that a lead follow-up was sent (so we never send twice)."""
+    with _conn() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO lead_followup(tg_id) VALUES(?)", (tg_id,),
         )
