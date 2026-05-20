@@ -3,6 +3,8 @@
 import html
 import logging
 import os
+from datetime import time as dt_time
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 from telegram import (
@@ -135,7 +137,13 @@ CLICK_LABELS = {
 }
 
 async def notify_admin_activity(bot, user, label: str, lang: str | None = None):
-    """Send admin notification with a clickable mention link so admin can DM the user."""
+    """Send admin notification with a clickable mention link so admin can DM the user.
+    Also records the click/start event in DB for analytics."""
+    try:
+        event_type = "start" if label == "Отправил /start" else "click"
+        db.log_event(user.id, event_type, label)
+    except Exception as e:
+        log.warning("db.log_event FAILED: %s (user=%s label=%s)", e, user.id, label)
     try:
         name = html.escape(user.first_name or "—")
         if user.username:
@@ -382,6 +390,116 @@ async def cmd_leads(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(text), 3500):
         await update.message.reply_text(text[i:i + 3500])
 
+# ────────────────────────────────────────────────────────────── analytics
+
+ADMIN_TZ = ZoneInfo("Europe/Moscow")
+
+def _format_stats(days: int, title: str) -> str:
+    """Build a human-readable stats summary block for /stats and daily report."""
+    s = db.stats_summary(days)
+    quiz_conv = ""
+    if s["quiz_starts"]:
+        pct = 100 * s["quiz_finishes"] // s["quiz_starts"]
+        quiz_conv = f" ({pct}% завершено)"
+    start_to_lead = ""
+    if s["starts"]:
+        pct = 100 * s["leads"] // s["starts"]
+        start_to_lead = f"\n• Конверсия /start → заявка: {pct}%"
+    by_kind = "—"
+    if s["by_kind"]:
+        by_kind = ", ".join(f"{r['payload']}: {r['n']}" for r in s["by_kind"])
+    by_source = "—"
+    if s["by_source"]:
+        by_source = ", ".join(f"{r['source']}: {r['n']}" for r in s["by_source"])
+    by_lang = "—"
+    if s["by_lang"]:
+        by_lang = ", ".join(f"{r['lang']}: {r['n']}" for r in s["by_lang"])
+    return (
+        f"📊 *{title}*\n\n"
+        f"👤 *Пользователи:*\n"
+        f"• /start (всего за период): {s['starts']}\n"
+        f"• Новых юзеров: {s['new_users']}\n"
+        f"• Всего в базе: {s['total_users']}\n\n"
+        f"📋 *Квизы:*\n"
+        f"• Начали: {s['quiz_starts']}\n"
+        f"• Завершили: {s['quiz_finishes']}{quiz_conv}\n"
+        f"• По категориям: {by_kind}\n\n"
+        f"💬 *Q&A:* {s['qa_asks']} вопросов\n\n"
+        f"📞 *Заявки:* {s['leads']}\n"
+        f"• По источникам: {by_source}"
+        f"{start_to_lead}\n\n"
+        f"🌐 *Новые юзеры по языкам:* {by_lang}"
+    )
+
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: show funnel statistics for today / 7 days / all time."""
+    if not _is_admin(update):
+        return
+    today = _format_stats(0, "Сегодня")
+    week = _format_stats(7, "За 7 дней")
+    all_time = _format_stats(36500, "За всё время")
+    for chunk in (today, week, all_time):
+        await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
+
+KIND_NAMES = {"eb1a": "EB-1A", "niw": "EB-2 NIW", "o1": "O-1", "e2": "E-2"}
+
+async def send_quiz_reminder(bot, tg_id: int, kind: str, stage: int):
+    """Send a 'finish your quiz' reminder to the user in their language."""
+    user_row = db.get_user_for_reminder(tg_id)
+    lang = (user_row and user_row.get("lang")) or "ru"
+    kind_name = KIND_NAMES.get(kind, kind.upper())
+    text = t("reminder_quiz_incomplete", lang).format(kind=kind_name)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t("btn_reminder_resume", lang), callback_data=f"quiz:{kind}"),
+        InlineKeyboardButton(t("btn_back", lang),            callback_data="menu"),
+    ]])
+    try:
+        await bot.send_message(tg_id, text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+        db.mark_reminded(tg_id, kind, stage)
+        log.info("reminder sent: user=%s kind=%s stage=%d", tg_id, kind, stage)
+    except Exception as e:
+        # User may have blocked the bot. Still mark as reminded so we don't retry forever.
+        db.mark_reminded(tg_id, kind, stage)
+        log.warning("reminder FAILED: user=%s kind=%s stage=%d err=%s",
+                    tg_id, kind, stage, e)
+
+async def job_check_reminders(ctx: ContextTypes.DEFAULT_TYPE):
+    """Periodic job: find users with stale unfinished quizzes and remind them."""
+    for stage in (1, 2):
+        for row in db.find_pending_reminders(stage):
+            await send_quiz_reminder(ctx.bot, row["tg_id"], row["kind"], stage)
+
+async def send_reengagement(bot, tg_id: int):
+    """Send a 'come back' reminder to a user who visited but didn't return."""
+    user_row = db.get_user_for_reminder(tg_id)
+    lang = (user_row and user_row.get("lang")) or "ru"
+    text = t("reminder_reengagement", lang)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t("btn_ask", lang),  callback_data="ask"),
+        InlineKeyboardButton(t("btn_back", lang), callback_data="menu"),
+    ]])
+    try:
+        await bot.send_message(tg_id, text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+        log.info("re-engagement sent: user=%s", tg_id)
+    except Exception as e:
+        log.warning("re-engagement FAILED: user=%s err=%s", tg_id, e)
+    finally:
+        # Mark regardless of success so we never spam-retry a blocked user.
+        db.mark_reengaged(tg_id)
+
+async def job_check_reengagement(ctx: ContextTypes.DEFAULT_TYPE):
+    """Periodic job: remind users who visited yesterday but didn't come back."""
+    for tg_id in db.find_reengagement_targets():
+        await send_reengagement(ctx.bot, tg_id)
+
+async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
+    """Daily 09:00 MSK admin report covering yesterday's full day."""
+    text = _format_stats(1, "Сводка за последние 24 часа")
+    try:
+        await ctx.bot.send_message(ADMIN_CHAT_ID, text, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        log.warning("daily summary FAILED: %s", e)
+
 # ────────────────────────────────────────────────────────────── callbacks
 
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -457,6 +575,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data[S_QUIZ_KIND] = kind
         ctx.user_data[S_QUIZ_IDX]  = 0
         ctx.user_data[S_QUIZ_ANS]  = []
+        db.start_quiz(q.from_user.id, kind)
+        db.log_event(q.from_user.id, "quiz_start", kind)
         await q.edit_message_text(cfg["intro"], parse_mode=ParseMode.MARKDOWN)
         await ctx.bot.send_message(
             q.message.chat_id,
@@ -562,6 +682,8 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         return
 
     verdict_ru, qualifies = quiz.summarize(kind, ans)
+    db.finish_quiz(u.id, kind)
+    db.log_event(u.id, "quiz_finish", f"{kind}:{sum(ans)}/{cfg['total']}")
     # Translate verdict for non-Russian users.
     if lang != "ru":
         try:
@@ -665,6 +787,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await ctx.bot.send_chat_action(update.effective_chat.id, "typing")
 
+    db.log_event(u.id, "qa_ask")
     history = db.recent_history(u.id, limit=8)
     try:
         answer, offer_consultation = await llm.ask(history, text, lang)
@@ -852,6 +975,7 @@ def main():
     app.add_handler(CommandHandler("users",       cmd_users))
     app.add_handler(CommandHandler("chat",    cmd_chat))
     app.add_handler(CommandHandler("leads",   cmd_leads))
+    app.add_handler(CommandHandler("stats",   cmd_stats))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(
@@ -860,6 +984,11 @@ def main():
         on_attachment,
     ))
     app.add_error_handler(on_error)
+    # Background jobs: quiz reminders every 30 min, re-engagement hourly,
+    # daily summary at 09:00 Moscow time.
+    app.job_queue.run_repeating(job_check_reminders, interval=1800, first=300)
+    app.job_queue.run_repeating(job_check_reengagement, interval=3600, first=600)
+    app.job_queue.run_daily(job_daily_summary, time=dt_time(9, 0, tzinfo=ADMIN_TZ))
     log.info("Bot started. Model=%s, daily_limit=%d", llm.MODEL, DAILY_LIMIT)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """SQLite storage: users, daily message counters, leads, quiz state."""
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "bot.db"
@@ -41,6 +41,27 @@ def init_db():
             role TEXT,
             content TEXT,
             created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER,
+            event_type TEXT,
+            payload TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(event_type, created_at);
+        CREATE TABLE IF NOT EXISTS quiz_state (
+            tg_id INTEGER,
+            kind TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            reminder1_at TEXT,
+            reminder2_at TEXT,
+            PRIMARY KEY (tg_id, kind)
+        );
+        CREATE TABLE IF NOT EXISTS reengagement (
+            tg_id INTEGER PRIMARY KEY,
+            reminded_at TEXT DEFAULT (datetime('now'))
         );
         """)
         # Migrate: add lang column to existing users table if missing.
@@ -180,3 +201,158 @@ def list_leads(limit: int = 30) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+# ─── analytics: events + quiz tracking ──────────────────────────────────
+
+def log_event(tg_id: int, event_type: str, payload: str | None = None):
+    """Record a funnel event. event_type: start|click|quiz_start|quiz_finish|lead|qa_ask."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO events(tg_id, event_type, payload) VALUES(?,?,?)",
+            (tg_id, event_type, payload),
+        )
+
+def start_quiz(tg_id: int, kind: str):
+    """Mark that a user started a given quiz. Resets reminder state."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO quiz_state(tg_id, kind, started_at, completed_at, "
+            "reminder1_at, reminder2_at) "
+            "VALUES(?,?,datetime('now'),NULL,NULL,NULL) "
+            "ON CONFLICT(tg_id, kind) DO UPDATE SET "
+            "started_at=datetime('now'), completed_at=NULL, "
+            "reminder1_at=NULL, reminder2_at=NULL",
+            (tg_id, kind),
+        )
+
+def finish_quiz(tg_id: int, kind: str):
+    """Mark a quiz as completed."""
+    with _conn() as c:
+        c.execute(
+            "UPDATE quiz_state SET completed_at=datetime('now') "
+            "WHERE tg_id=? AND kind=? AND completed_at IS NULL",
+            (tg_id, kind),
+        )
+
+def find_pending_reminders(stage: int) -> list[dict]:
+    """Find quizzes that need a reminder.
+    stage=1: started ≥ 2h ago, no reminder1 sent, not finished.
+    stage=2: reminder1 was sent ≥ 22h ago (= 24h after start), no reminder2 sent."""
+    if stage == 1:
+        sql = (
+            "SELECT tg_id, kind FROM quiz_state "
+            "WHERE completed_at IS NULL "
+            "AND reminder1_at IS NULL "
+            "AND datetime(started_at) <= datetime('now', '-2 hours')"
+        )
+    elif stage == 2:
+        sql = (
+            "SELECT tg_id, kind FROM quiz_state "
+            "WHERE completed_at IS NULL "
+            "AND reminder1_at IS NOT NULL "
+            "AND reminder2_at IS NULL "
+            "AND datetime(reminder1_at) <= datetime('now', '-22 hours')"
+        )
+    else:
+        return []
+    with _conn() as c:
+        rows = c.execute(sql).fetchall()
+    return [dict(r) for r in rows]
+
+def mark_reminded(tg_id: int, kind: str, stage: int):
+    """Mark that we sent reminder stage N for this user+quiz."""
+    col = f"reminder{stage}_at"
+    with _conn() as c:
+        c.execute(
+            f"UPDATE quiz_state SET {col}=datetime('now') WHERE tg_id=? AND kind=?",
+            (tg_id, kind),
+        )
+
+def stats_summary(days: int) -> dict:
+    """Aggregate funnel metrics for the last N days. days=0 means 'today only'."""
+    if days <= 0:
+        cutoff = "datetime('now', 'start of day')"
+    else:
+        cutoff = f"datetime('now', '-{days} days')"
+    with _conn() as c:
+        def count(sql, *args):
+            return c.execute(sql, args).fetchone()[0]
+        starts = count(
+            f"SELECT COUNT(*) FROM events WHERE event_type='start' AND created_at >= {cutoff}"
+        )
+        new_users = count(
+            f"SELECT COUNT(*) FROM users WHERE created_at >= {cutoff}"
+        )
+        quiz_starts = count(
+            f"SELECT COUNT(*) FROM events WHERE event_type='quiz_start' AND created_at >= {cutoff}"
+        )
+        quiz_finishes = count(
+            f"SELECT COUNT(*) FROM events WHERE event_type='quiz_finish' AND created_at >= {cutoff}"
+        )
+        leads = count(
+            f"SELECT COUNT(*) FROM leads WHERE created_at >= {cutoff}"
+        )
+        qa_asks = count(
+            f"SELECT COUNT(*) FROM events WHERE event_type='qa_ask' AND created_at >= {cutoff}"
+        )
+        # Quiz finishes broken down by kind
+        kind_rows = c.execute(
+            f"SELECT payload, COUNT(*) AS n FROM events "
+            f"WHERE event_type='quiz_finish' AND created_at >= {cutoff} "
+            f"GROUP BY payload ORDER BY n DESC"
+        ).fetchall()
+        # Lead sources
+        lead_rows = c.execute(
+            f"SELECT source, COUNT(*) AS n FROM leads "
+            f"WHERE created_at >= {cutoff} "
+            f"GROUP BY source ORDER BY n DESC"
+        ).fetchall()
+        # Language breakdown (of new users in period)
+        lang_rows = c.execute(
+            f"SELECT lang, COUNT(*) AS n FROM users "
+            f"WHERE created_at >= {cutoff} AND lang IS NOT NULL "
+            f"GROUP BY lang ORDER BY n DESC"
+        ).fetchall()
+        total_users = count("SELECT COUNT(*) FROM users")
+    return {
+        "starts": starts,
+        "new_users": new_users,
+        "total_users": total_users,
+        "quiz_starts": quiz_starts,
+        "quiz_finishes": quiz_finishes,
+        "leads": leads,
+        "qa_asks": qa_asks,
+        "by_kind": [dict(r) for r in kind_rows],
+        "by_source": [dict(r) for r in lead_rows],
+        "by_lang": [dict(r) for r in lang_rows],
+    }
+
+def get_user_for_reminder(tg_id: int) -> dict | None:
+    """Get user data needed to send a reminder (lang, first_name)."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT tg_id, first_name, lang FROM users WHERE tg_id=?", (tg_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+def find_reengagement_targets() -> list[int]:
+    """Users who visited the bot yesterday (last activity 24-48h ago), never
+    left a lead, and have not yet been sent a re-engagement reminder."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT e.tg_id, MAX(e.created_at) AS last_seen "
+            "FROM events e "
+            "WHERE e.tg_id NOT IN (SELECT tg_id FROM leads) "
+            "AND e.tg_id NOT IN (SELECT tg_id FROM reengagement) "
+            "GROUP BY e.tg_id "
+            "HAVING last_seen <= datetime('now', '-24 hours') "
+            "AND last_seen >= datetime('now', '-48 hours')"
+        ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+def mark_reengaged(tg_id: int):
+    """Record that a re-engagement reminder was sent (so we never send twice)."""
+    with _conn() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO reengagement(tg_id) VALUES(?)", (tg_id,),
+        )

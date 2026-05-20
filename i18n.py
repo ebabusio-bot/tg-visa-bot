@@ -74,6 +74,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Стоимость и сроки",
         "btn_book": "📞 Записаться на консультацию",
         "btn_back": "⬅️ В меню",
+        "btn_reminder_resume": "📋 Доделать квиз",
+        "reminder_quiz_incomplete": (
+            "👋 Вы начали оценку шансов по *{kind}*, но не завершили её. "
+            "Хотите доделать сейчас?"
+        ),
+        "reminder_reengagement": (
+            "👋 Вчера вы заходили к ИИ-ассистенту по иммиграции в США. "
+            "Могу ли я ответить на ваши вопросы?"
+        ),
         "btn_case_done": "✅ Завершить отправку",
         "btn_yes": "✅ Да",
         "btn_no": "❌ Нет",
@@ -260,6 +269,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Вартість і терміни",
         "btn_book": "📞 Записатися на консультацію",
         "btn_back": "⬅️ До меню",
+        "btn_reminder_resume": "📋 Завершити анкету",
+        "reminder_quiz_incomplete": (
+            "👋 Ви розпочали оцінку шансів за *{kind}*, але не завершили її. "
+            "Хочете завершити зараз?"
+        ),
+        "reminder_reengagement": (
+            "👋 Вчора ви заходили до ШІ-асистента з імміграції до США. "
+            "Чи можу я відповісти на ваші запитання?"
+        ),
         "btn_case_done": "✅ Завершити надсилання",
         "btn_yes": "✅ Так",
         "btn_no": "❌ Ні",
@@ -456,6 +474,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pricing & timelines",
         "btn_book": "📞 Book a consultation",
         "btn_back": "⬅️ Back to menu",
+        "btn_reminder_resume": "📋 Resume quiz",
+        "reminder_quiz_incomplete": (
+            "👋 You started the *{kind}* eligibility assessment but didn't finish. "
+            "Want to complete it now?"
+        ),
+        "reminder_reengagement": (
+            "👋 Yesterday you visited the AI assistant for US immigration. "
+            "Can I answer any questions for you?"
+        ),
         "btn_case_done": "✅ Finish sending",
         "btn_yes": "✅ Yes",
         "btn_no": "❌ No",
@@ -640,6 +667,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Precios y plazos",
         "btn_book": "📞 Reservar consulta",
         "btn_back": "⬅️ Al menú",
+        "btn_reminder_resume": "📋 Continuar el cuestionario",
+        "reminder_quiz_incomplete": (
+            "👋 Empezaste la evaluación de elegibilidad para *{kind}* pero no la terminaste. "
+            "¿Quieres completarla ahora?"
+        ),
+        "reminder_reengagement": (
+            "👋 Ayer visitó el asistente de IA para inmigración a EE. UU. "
+            "¿Puedo responder a alguna pregunta?"
+        ),
         "btn_case_done": "✅ Terminar envío",
         "btn_yes": "✅ Sí",
         "btn_no": "❌ No",
@@ -823,6 +859,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Tarifs et délais",
         "btn_book": "📞 Réserver une consultation",
         "btn_back": "⬅️ Au menu",
+        "btn_reminder_resume": "📋 Reprendre le quiz",
+        "reminder_quiz_incomplete": (
+            "👋 Vous avez commencé l'évaluation d'éligibilité *{kind}* mais ne l'avez pas terminée. "
+            "Voulez-vous la finir maintenant ?"
+        ),
+        "reminder_reengagement": (
+            "👋 Hier, vous avez consulté l'assistant IA pour l'immigration aux États-Unis. "
+            "Puis-je répondre à vos questions ?"
+        ),
         "btn_case_done": "✅ Terminer l'envoi",
         "btn_yes": "✅ Oui",
         "btn_no": "❌ Non",
@@ -1006,6 +1051,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pri ak dele",
         "btn_book": "📞 Pran yon konsiltasyon",
         "btn_back": "⬅️ Tounen nan meni",
+        "btn_reminder_resume": "📋 Kontinye kesyonè a",
+        "reminder_quiz_incomplete": (
+            "👋 Ou te kòmanse evalyasyon kalifikasyon *{kind}* la men ou pa fini l. "
+            "Èske ou vle fini l kounye a?"
+        ),
+        "reminder_reengagement": (
+            "👋 Yè ou te vizite asistan IA pou imigrasyon Ozetazini an. "
+            "Èske mwen ka reponn nenpòt kesyon pou ou?"
+        ),
         "btn_case_done": "✅ Fini voye",
         "btn_yes": "✅ Wi",
         "btn_no": "❌ Non",
@@ -1188,6 +1242,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Preços e prazos",
         "btn_book": "📞 Agendar consulta",
         "btn_back": "⬅️ Ao menu",
+        "btn_reminder_resume": "📋 Continuar o questionário",
+        "reminder_quiz_incomplete": (
+            "👋 Você começou a avaliação de elegibilidade para *{kind}* mas não a terminou. "
+            "Quer concluir agora?"
+        ),
+        "reminder_reengagement": (
+            "👋 Ontem você visitou o assistente de IA para imigração nos EUA. "
+            "Posso responder a alguma pergunta?"
+        ),
         "btn_case_done": "✅ Concluir envio",
         "btn_yes": "✅ Sim",
         "btn_no": "❌ Não",
@@ -1370,6 +1433,15 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 शुल्क और समयसीमा",
         "btn_book": "📞 परामर्श बुक करें",
         "btn_back": "⬅️ मेनू पर",
+        "btn_reminder_resume": "📋 क्विज़ जारी रखें",
+        "reminder_quiz_incomplete": (
+            "👋 आपने *{kind}* के लिए पात्रता मूल्यांकन शुरू किया था लेकिन पूरा नहीं किया। "
+            "क्या आप अभी पूरा करना चाहेंगे?"
+        ),
+        "reminder_reengagement": (
+            "👋 कल आपने अमेरिका आप्रवासन के लिए AI सहायक का दौरा किया था। "
+            "क्या मैं आपके किसी प्रश्न का उत्तर दे सकता हूँ?"
+        ),
         "btn_case_done": "✅ भेजना समाप्त करें",
         "btn_yes": "✅ हाँ",
         "btn_no": "❌ नहीं",
