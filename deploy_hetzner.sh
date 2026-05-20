@@ -60,12 +60,33 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+echo "==> systemd unit /etc/systemd/system/healthcheck.service"
+cat > "/etc/systemd/system/healthcheck.service" <<EOF
+[Unit]
+Description=SunnyFl bot healthcheck endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${APP_USER}
+WorkingDirectory=${APP_DIR}
+ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/healthcheck.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 chmod 600 "${APP_DIR}/.env"
 
 systemctl daemon-reload
-systemctl enable tgbot
-systemctl restart tgbot
+systemctl enable tgbot healthcheck
+systemctl restart tgbot healthcheck
 sleep 2
 systemctl --no-pager status tgbot | head -n 20 || true
 

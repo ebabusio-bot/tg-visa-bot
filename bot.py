@@ -3,10 +3,8 @@
 import html
 import logging
 import os
-import threading
 import time as _time
 from datetime import time as dt_time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -517,45 +515,23 @@ async def job_check_reengagement(ctx: ContextTypes.DEFAULT_TYPE):
     for tg_id in db.find_reengagement_targets():
         await send_reengagement(ctx.bot, tg_id)
 
-# ─── healthcheck endpoint (for external uptime monitoring, e.g. UptimeRobot) ──
+# ─── heartbeat (consumed by the standalone healthcheck.py service) ──────────
 
-HEALTHCHECK_PORT = int(os.environ.get("HEALTHCHECK_PORT", "8080"))
-_last_heartbeat = _time.time()
+HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "heartbeat")
 
-class _HealthHandler(BaseHTTPRequestHandler):
-    """Replies 200 'ok' while the bot's asyncio loop is alive, else 503 'stale'.
-    Handles both GET and HEAD (uptime monitors often probe with HEAD)."""
-    def _respond(self, with_body: bool):
-        ok = (_time.time() - _last_heartbeat) < 300
-        body = (b"ok" if ok else b"stale")
-        self.send_response(200 if ok else 503)
-        self.send_header("Content-Type", "text/plain")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        if with_body:
-            self.wfile.write(body)
-
-    def do_GET(self):
-        self._respond(with_body=True)
-
-    def do_HEAD(self):
-        self._respond(with_body=False)
-
-    def log_message(self, *args):
-        pass  # silence per-request access logging
-
-def _start_healthcheck_server():
+def _touch_heartbeat():
+    """Update the heartbeat file's mtime. The separate healthcheck service
+    reads this file's age; keeping it in its own service means bot restarts
+    (deploys) don't cause false 'down' alerts."""
     try:
-        srv = HTTPServer(("0.0.0.0", HEALTHCHECK_PORT), _HealthHandler)
-        log.info("Healthcheck server listening on :%d", HEALTHCHECK_PORT)
-        srv.serve_forever()
+        with open(HEARTBEAT_FILE, "w") as f:
+            f.write(str(_time.time()))
     except Exception as e:
-        log.warning("Healthcheck server failed to start: %s", e)
+        log.warning("heartbeat write failed: %s", e)
 
 async def job_heartbeat(ctx: ContextTypes.DEFAULT_TYPE):
-    """Refresh the heartbeat timestamp; proves the asyncio event loop is alive."""
-    global _last_heartbeat
-    _last_heartbeat = _time.time()
+    """Refresh the heartbeat file; proves the asyncio event loop is alive."""
+    _touch_heartbeat()
 
 async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
     """Daily 09:00 MSK admin report covering yesterday's full day."""
@@ -1101,8 +1077,9 @@ def main():
         on_attachment,
     ))
     app.add_error_handler(on_error)
-    # Healthcheck HTTP server in a daemon thread for external uptime monitoring.
-    threading.Thread(target=_start_healthcheck_server, daemon=True).start()
+    # Write an initial heartbeat right away so the healthcheck service sees
+    # the bot as up immediately after a restart.
+    _touch_heartbeat()
     # Background jobs: heartbeat every minute, quiz reminders every 30 min,
     # re-engagement hourly, daily summary at 09:00 Moscow time.
     app.job_queue.run_repeating(job_heartbeat, interval=60, first=1)
