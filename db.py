@@ -64,10 +64,12 @@ def init_db():
             reminded_at TEXT DEFAULT (datetime('now'))
         );
         """)
-        # Migrate: add lang column to existing users table if missing.
+        # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
         if "lang" not in cols:
             c.execute("ALTER TABLE users ADD COLUMN lang TEXT")
+        if "source" not in cols:
+            c.execute("ALTER TABLE users ADD COLUMN source TEXT")
 
 def upsert_user(tg_id: int, username: str | None, first_name: str | None):
     with _conn() as c:
@@ -75,6 +77,25 @@ def upsert_user(tg_id: int, username: str | None, first_name: str | None):
             "INSERT OR IGNORE INTO users(tg_id, username, first_name) VALUES(?,?,?)",
             (tg_id, username, first_name),
         )
+
+def set_user_source(tg_id: int, source: str) -> str | None:
+    """Record the traffic source for a user from a deep-link /start parameter.
+    First-touch attribution: only set if not already recorded. Returns the
+    effective source (the newly set one, or the existing one)."""
+    source = "".join(ch for ch in source if ch.isalnum() or ch in "_-")[:32]
+    if not source:
+        return None
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO users(tg_id, source) VALUES(?,?) "
+            "ON CONFLICT(tg_id) DO UPDATE SET source=excluded.source "
+            "WHERE users.source IS NULL",
+            (tg_id, source),
+        )
+        row = c.execute(
+            "SELECT source FROM users WHERE tg_id=?", (tg_id,),
+        ).fetchone()
+        return row["source"] if row else source
 
 def get_user_lang(tg_id: int) -> str | None:
     with _conn() as c:
@@ -313,6 +334,12 @@ def stats_summary(days: int) -> dict:
             f"WHERE created_at >= {cutoff} AND lang IS NOT NULL "
             f"GROUP BY lang ORDER BY n DESC"
         ).fetchall()
+        # Traffic source breakdown (of new users in period, from deep links)
+        src_rows = c.execute(
+            f"SELECT COALESCE(source, '(прямой переход)') AS source, COUNT(*) AS n "
+            f"FROM users WHERE created_at >= {cutoff} "
+            f"GROUP BY source ORDER BY n DESC"
+        ).fetchall()
         total_users = count("SELECT COUNT(*) FROM users")
     return {
         "starts": starts,
@@ -325,6 +352,7 @@ def stats_summary(days: int) -> dict:
         "by_kind": [dict(r) for r in kind_rows],
         "by_source": [dict(r) for r in lead_rows],
         "by_lang": [dict(r) for r in lang_rows],
+        "by_traffic": [dict(r) for r in src_rows],
     }
 
 def get_user_for_reminder(tg_id: int) -> dict | None:

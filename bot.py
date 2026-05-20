@@ -136,12 +136,18 @@ CLICK_LABELS = {
     "lang":        "🌐 Сменить язык",
 }
 
-async def notify_admin_activity(bot, user, label: str, lang: str | None = None):
+async def notify_admin_activity(bot, user, label: str, lang: str | None = None,
+                                event_label: str | None = None):
     """Send admin notification with a clickable mention link so admin can DM the user.
-    Also records the click/start event in DB for analytics."""
+    Also records the click/start event in DB for analytics.
+
+    `label` is the admin-facing text (may include extras like a traffic source);
+    `event_label` is the canonical label used to classify the event type — pass it
+    when `label` is decorated, otherwise `label` itself is used."""
+    classify = event_label or label
     try:
-        event_type = "start" if label == "Отправил /start" else "click"
-        db.log_event(user.id, event_type, label)
+        event_type = "start" if classify == "Отправил /start" else "click"
+        db.log_event(user.id, event_type, classify)
     except Exception as e:
         log.warning("db.log_event FAILED: %s (user=%s label=%s)", e, user.id, label)
     try:
@@ -247,8 +253,18 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.upsert_user(u.id, u.username, u.first_name)
     ctx.user_data.clear()
 
+    # Deep-link traffic source: t.me/SunnyFl_bot?start=instagram → ctx.args == ['instagram']
+    source = None
+    if ctx.args:
+        source = db.set_user_source(u.id, ctx.args[0])
+
     saved_lang = db.get_user_lang(u.id)
-    await notify_admin_activity(ctx.bot, u, "Отправил /start", saved_lang)
+    start_label = "Отправил /start"
+    admin_label = start_label
+    if source:
+        admin_label = f"{start_label} (источник: {source})"
+    await notify_admin_activity(ctx.bot, u, admin_label, saved_lang,
+                                event_label=start_label)
 
     if saved_lang not in i18n.LANG_CODES:
         # Either first-time user, or saved language is no longer supported
@@ -414,6 +430,9 @@ def _format_stats(days: int, title: str) -> str:
     by_lang = "—"
     if s["by_lang"]:
         by_lang = ", ".join(f"{r['lang']}: {r['n']}" for r in s["by_lang"])
+    by_traffic = "—"
+    if s.get("by_traffic"):
+        by_traffic = "\n".join(f"  • {r['source']}: {r['n']}" for r in s["by_traffic"])
     return (
         f"📊 *{title}*\n\n"
         f"👤 *Пользователи:*\n"
@@ -426,8 +445,9 @@ def _format_stats(days: int, title: str) -> str:
         f"• По категориям: {by_kind}\n\n"
         f"💬 *Q&A:* {s['qa_asks']} вопросов\n\n"
         f"📞 *Заявки:* {s['leads']}\n"
-        f"• По источникам: {by_source}"
+        f"• По кнопкам: {by_source}"
         f"{start_to_lead}\n\n"
+        f"📣 *Источники переходов (новые юзеры):*\n{by_traffic}\n\n"
         f"🌐 *Новые юзеры по языкам:* {by_lang}"
     )
 
