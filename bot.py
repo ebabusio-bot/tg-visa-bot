@@ -521,13 +521,23 @@ HEALTHCHECK_PORT = int(os.environ.get("HEALTHCHECK_PORT", "8080"))
 _last_heartbeat = _time.time()
 
 class _HealthHandler(BaseHTTPRequestHandler):
-    """Replies 200 'ok' while the bot's asyncio loop is alive, else 503 'stale'."""
-    def do_GET(self):
+    """Replies 200 'ok' while the bot's asyncio loop is alive, else 503 'stale'.
+    Handles both GET and HEAD (uptime monitors often probe with HEAD)."""
+    def _respond(self, with_body: bool):
         ok = (_time.time() - _last_heartbeat) < 300
+        body = (b"ok" if ok else b"stale")
         self.send_response(200 if ok else 503)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(b"ok" if ok else b"stale")
+        if with_body:
+            self.wfile.write(body)
+
+    def do_GET(self):
+        self._respond(with_body=True)
+
+    def do_HEAD(self):
+        self._respond(with_body=False)
 
     def log_message(self, *args):
         pass  # silence per-request access logging
