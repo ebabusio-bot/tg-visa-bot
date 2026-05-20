@@ -3,7 +3,10 @@
 import html
 import logging
 import os
+import threading
+import time as _time
 from datetime import time as dt_time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -512,6 +515,36 @@ async def job_check_reengagement(ctx: ContextTypes.DEFAULT_TYPE):
     for tg_id in db.find_reengagement_targets():
         await send_reengagement(ctx.bot, tg_id)
 
+# ─── healthcheck endpoint (for external uptime monitoring, e.g. UptimeRobot) ──
+
+HEALTHCHECK_PORT = int(os.environ.get("HEALTHCHECK_PORT", "8080"))
+_last_heartbeat = _time.time()
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    """Replies 200 'ok' while the bot's asyncio loop is alive, else 503 'stale'."""
+    def do_GET(self):
+        ok = (_time.time() - _last_heartbeat) < 300
+        self.send_response(200 if ok else 503)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"ok" if ok else b"stale")
+
+    def log_message(self, *args):
+        pass  # silence per-request access logging
+
+def _start_healthcheck_server():
+    try:
+        srv = HTTPServer(("0.0.0.0", HEALTHCHECK_PORT), _HealthHandler)
+        log.info("Healthcheck server listening on :%d", HEALTHCHECK_PORT)
+        srv.serve_forever()
+    except Exception as e:
+        log.warning("Healthcheck server failed to start: %s", e)
+
+async def job_heartbeat(ctx: ContextTypes.DEFAULT_TYPE):
+    """Refresh the heartbeat timestamp; proves the asyncio event loop is alive."""
+    global _last_heartbeat
+    _last_heartbeat = _time.time()
+
 async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
     """Daily 09:00 MSK admin report covering yesterday's full day."""
     text = _format_stats(1, "Сводка за последние 24 часа")
@@ -1004,8 +1037,11 @@ def main():
         on_attachment,
     ))
     app.add_error_handler(on_error)
-    # Background jobs: quiz reminders every 30 min, re-engagement hourly,
-    # daily summary at 09:00 Moscow time.
+    # Healthcheck HTTP server in a daemon thread for external uptime monitoring.
+    threading.Thread(target=_start_healthcheck_server, daemon=True).start()
+    # Background jobs: heartbeat every minute, quiz reminders every 30 min,
+    # re-engagement hourly, daily summary at 09:00 Moscow time.
+    app.job_queue.run_repeating(job_heartbeat, interval=60, first=1)
     app.job_queue.run_repeating(job_check_reminders, interval=1800, first=300)
     app.job_queue.run_repeating(job_check_reengagement, interval=3600, first=600)
     app.job_queue.run_daily(job_daily_summary, time=dt_time(9, 0, tzinfo=ADMIN_TZ))
