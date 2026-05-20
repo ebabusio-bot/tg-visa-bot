@@ -74,6 +74,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Стоимость и сроки",
         "btn_book": "📞 Записаться на консультацию",
         "btn_back": "⬅️ В меню",
+        "btn_checklist": "🎁 Бесплатный чеклист документов",
+        "checklist_select": (
+            "🎁 *Бесплатный чеклист документов для петиции.*\n\nВыберите визу:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Отлично! Напишите одним сообщением ваше *имя* и *email или телефон* — "
+            "наши специалисты пришлют чеклист и при необходимости ответят на вопросы."
+        ),
+        "checklist_sent": (
+            "✅ Спасибо! Ваш чеклист — ниже. Наши специалисты также свяжутся с вами."
+        ),
         "btn_support": "🛠 Техподдержка",
         "support_info": (
             "🛠 *Техподдержка*\n\n"
@@ -287,6 +298,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Вартість і терміни",
         "btn_book": "📞 Записатися на консультацію",
         "btn_back": "⬅️ До меню",
+        "btn_checklist": "🎁 Безкоштовний чеклист документів",
+        "checklist_select": (
+            "🎁 *Безкоштовний чеклист документів для петиції.*\n\nОберіть візу:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Чудово! Напишіть одним повідомленням ваше *ім'я* та *email або телефон* — "
+            "наші спеціалісти надішлють чеклист і за потреби дадуть відповіді на запитання."
+        ),
+        "checklist_sent": (
+            "✅ Дякуємо! Ваш чеклист — нижче. Наші спеціалісти також зв'яжуться з вами."
+        ),
         "btn_support": "🛠 Техпідтримка",
         "support_info": (
             "🛠 *Техпідтримка*\n\n"
@@ -510,6 +532,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pricing & timelines",
         "btn_book": "📞 Book a consultation",
         "btn_back": "⬅️ Back to menu",
+        "btn_checklist": "🎁 Free document checklist",
+        "checklist_select": (
+            "🎁 *Free petition document checklist.*\n\nChoose a visa:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Great! Send your *name* and *email or phone* in one message — "
+            "our specialists will send the checklist and answer any questions."
+        ),
+        "checklist_sent": (
+            "✅ Thank you! Your checklist is below. Our specialists will also get in touch."
+        ),
         "btn_support": "🛠 Tech support",
         "support_info": (
             "🛠 *Tech support*\n\n"
@@ -721,6 +754,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Precios y plazos",
         "btn_book": "📞 Reservar consulta",
         "btn_back": "⬅️ Al menú",
+        "btn_checklist": "🎁 Lista de documentos gratis",
+        "checklist_select": (
+            "🎁 *Lista gratuita de documentos para la petición.*\n\nElija una visa:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 ¡Genial! Envíe su *nombre* y *email o teléfono* en un solo mensaje — "
+            "nuestros especialistas le enviarán la lista y responderán sus preguntas."
+        ),
+        "checklist_sent": (
+            "✅ ¡Gracias! Su lista está abajo. Nuestros especialistas también se pondrán en contacto."
+        ),
         "btn_support": "🛠 Soporte técnico",
         "support_info": (
             "🛠 *Soporte técnico*\n\n"
@@ -931,6 +975,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Tarifs et délais",
         "btn_book": "📞 Réserver une consultation",
         "btn_back": "⬅️ Au menu",
+        "btn_checklist": "🎁 Liste de documents gratuite",
+        "checklist_select": (
+            "🎁 *Liste gratuite de documents pour la pétition.*\n\nChoisissez un visa :"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Parfait ! Envoyez votre *nom* et votre *email ou téléphone* en un seul message — "
+            "nos spécialistes vous enverront la liste et répondront à vos questions."
+        ),
+        "checklist_sent": (
+            "✅ Merci ! Votre liste est ci-dessous. Nos spécialistes vous contacteront également."
+        ),
         "btn_support": "🛠 Assistance technique",
         "support_info": (
             "🛠 *Assistance technique*\n\n"
@@ -1141,6 +1196,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Pri ak dele",
         "btn_book": "📞 Pran yon konsiltasyon",
         "btn_back": "⬅️ Tounen nan meni",
+        "btn_checklist": "🎁 Lis dokiman gratis",
+        "checklist_select": (
+            "🎁 *Lis dokiman gratis pou petisyon an.*\n\nChwazi yon viza:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Bon! Voye non ou ak email oswa telefòn ou nan yon sèl mesaj — "
+            "espesyalis nou yo ap voye lis la epi reponn nenpòt kesyon."
+        ),
+        "checklist_sent": (
+            "✅ Mèsi! Lis ou a anba a. Espesyalis nou yo ap kontakte ou tou."
+        ),
         "btn_support": "🛠 Sipò teknik",
         "support_info": (
             "🛠 *Sipò teknik*\n\n"
@@ -1350,6 +1416,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 Preços e prazos",
         "btn_book": "📞 Agendar consulta",
         "btn_back": "⬅️ Ao menu",
+        "btn_checklist": "🎁 Lista de documentos grátis",
+        "checklist_select": (
+            "🎁 *Lista gratuita de documentos para a petição.*\n\nEscolha um visto:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 Ótimo! Envie o seu *nome* e *email ou telefone* em uma mensagem — "
+            "nossos especialistas enviarão a lista e responderão às suas perguntas."
+        ),
+        "checklist_sent": (
+            "✅ Obrigado! A sua lista está abaixo. Nossos especialistas também entrarão em contato."
+        ),
         "btn_support": "🛠 Suporte técnico",
         "support_info": (
             "🛠 *Suporte técnico*\n\n"
@@ -1559,6 +1636,17 @@ T: dict[str, dict[str, object]] = {
         "btn_pricing": "💰 शुल्क और समयसीमा",
         "btn_book": "📞 परामर्श बुक करें",
         "btn_back": "⬅️ मेनू पर",
+        "btn_checklist": "🎁 निःशुल्क दस्तावेज़ चेकलिस्ट",
+        "checklist_select": (
+            "🎁 *याचिका के लिए निःशुल्क दस्तावेज़ चेकलिस्ट।*\n\nवीज़ा चुनें:"
+        ),
+        "checklist_contact_prompt": (
+            "📋 बढ़िया! एक संदेश में अपना *नाम* और *ईमेल या फ़ोन* भेजें — "
+            "हमारे विशेषज्ञ चेकलिस्ट भेजेंगे और आपके प्रश्नों का उत्तर देंगे।"
+        ),
+        "checklist_sent": (
+            "✅ धन्यवाद! आपकी चेकलिस्ट नीचे है। हमारे विशेषज्ञ भी आपसे संपर्क करेंगे।"
+        ),
         "btn_support": "🛠 तकनीकी सहायता",
         "support_info": (
             "🛠 *तकनीकी सहायता*\n\n"

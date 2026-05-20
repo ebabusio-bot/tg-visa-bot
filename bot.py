@@ -131,6 +131,11 @@ CLICK_LABELS = {
     "book":        "📞 Записаться на консультацию",
     "case_done":   "✅ Завершить отправку (case review)",
     "support":     "🛠 Обратиться в техподдержку",
+    "checklist":   "🎁 Бесплатный чеклист документов",
+    "checklist:eb1a": "Выбрал чеклист: EB-1A",
+    "checklist:niw":  "Выбрал чеклист: EB-2 NIW",
+    "checklist:o1":   "Выбрал чеклист: O-1",
+    "checklist:e2":   "Выбрал чеклист: E-2",
     "quiz:eb1a":   "Выбрал квиз: EB-1A",
     "quiz:niw":    "Выбрал квиз: EB-2 NIW",
     "quiz:o1":     "Выбрал квиз: O-1",
@@ -215,11 +220,21 @@ def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_ask", lang),         callback_data="ask")],
         [InlineKeyboardButton(t("btn_quiz", lang),        callback_data="quiz")],
+        [InlineKeyboardButton(t("btn_checklist", lang),   callback_data="checklist")],
         [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
         [InlineKeyboardButton(t("btn_pricing", lang),     callback_data="pricing")],
         [InlineKeyboardButton(t("btn_book", lang),        callback_data="book")],
         [InlineKeyboardButton(t("btn_support", lang),     callback_data="support")],
         [InlineKeyboardButton(t("btn_lang", lang),        callback_data="lang")],
+    ])
+
+def checklist_select_kb(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_quiz_eb1a", lang), callback_data="checklist:eb1a")],
+        [InlineKeyboardButton(t("btn_quiz_niw",  lang), callback_data="checklist:niw")],
+        [InlineKeyboardButton(t("btn_quiz_o1",   lang), callback_data="checklist:o1")],
+        [InlineKeyboardButton(t("btn_quiz_e2",   lang), callback_data="checklist:e2")],
+        [InlineKeyboardButton(t("btn_back",      lang), callback_data="menu")],
     ])
 
 def case_review_kb(lang: str) -> InlineKeyboardMarkup:
@@ -720,6 +735,28 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "checklist":
+        ctx.user_data[S_MODE] = None
+        await q.edit_message_text(
+            t("checklist_select", lang),
+            reply_markup=checklist_select_kb(lang),
+        )
+        return
+
+    if data.startswith("checklist:"):
+        kind = data.split(":", 1)[1]
+        if kind not in ("eb1a", "niw", "o1", "e2"):
+            await q.edit_message_text(
+                t("unknown_quiz", lang), reply_markup=main_menu_kb(lang),
+            )
+            return
+        ctx.user_data[S_MODE] = "checklist"
+        ctx.user_data["checklist_kind"] = kind
+        await q.edit_message_text(
+            t("checklist_contact_prompt", lang), parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
 async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_yes: bool):
     q = update.callback_query
     u = q.from_user
@@ -854,6 +891,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _forward_support(update, ctx)
         return
 
+    if mode == "checklist":
+        await _deliver_checklist(update, ctx)
+        return
+
     allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
     if not allowed:
         await update.message.reply_text(
@@ -978,6 +1019,47 @@ async def _forward_support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data[S_MODE] = None
     key = "support_sent" if delivered else "support_failed"
     await update.message.reply_text(t(key, lang), reply_markup=main_menu_kb(lang))
+
+async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Lead magnet: capture the user's contact, forward it to the admin as a
+    lead, then deliver the requested visa document checklist."""
+    import prompts as _p
+    u = update.effective_user
+    db.upsert_user(u.id, u.username, u.first_name)
+    lang = user_lang(u.id)
+    kind = ctx.user_data.get("checklist_kind", "eb1a")
+    contact = (update.message.text or "").strip()
+
+    db.save_lead(u.id, u.username, f"Чеклист {kind.upper()}: {contact}", f"checklist:{kind}")
+    db.log_event(u.id, "lead", f"checklist:{kind}")
+    try:
+        await safe_send(
+            ctx.bot,
+            ADMIN_CHAT_ID,
+            f"🎁 *Заявка на чеклист* — {md_esc(kind.upper())}\n\n"
+            f"От: {fmt_user_md(u)}\n"
+            f"Язык: {md_esc(lang_badge(lang))}\n"
+            f"Контакт: {md_esc(contact)}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        log.warning("checklist lead notify failed: %s", e)
+
+    checklist_ru = _p.CHECKLISTS.get(kind, _p.CHECKLIST_EB1A)
+    if lang != "ru":
+        try:
+            checklist_txt = await llm.translate(checklist_ru, lang)
+        except Exception:
+            log.exception("checklist translation failed; sending Russian")
+            checklist_txt = checklist_ru
+    else:
+        checklist_txt = checklist_ru
+
+    ctx.user_data[S_MODE] = None
+    ctx.user_data.pop("checklist_kind", None)
+    await update.message.reply_text(t("checklist_sent", lang), parse_mode=ParseMode.MARKDOWN)
+    await safe_send(ctx.bot, update.effective_chat.id, checklist_txt,
+                    parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_kb(lang))
 
 async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Forward attachment sent during lead (booking) mode to the admin."""
