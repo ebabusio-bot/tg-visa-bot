@@ -253,10 +253,13 @@ def quiz_select_kb(lang: str) -> InlineKeyboardMarkup:
     ])
 
 def yes_no_kb(lang: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(t("btn_yes", lang), callback_data="q:yes"),
-        InlineKeyboardButton(t("btn_no",  lang), callback_data="q:no"),
-    ]])
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(t("btn_yes", lang), callback_data="q:yes"),
+            InlineKeyboardButton(t("btn_no",  lang), callback_data="q:no"),
+        ],
+        [InlineKeyboardButton(t("btn_back", lang), callback_data="q:back")],
+    ])
 
 def post_quiz_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -665,13 +668,44 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "q:back":
+        idx = ctx.user_data.get(S_QUIZ_IDX, 0)
+        ans = ctx.user_data.get(S_QUIZ_ANS, [])
+        kind = ctx.user_data.get(S_QUIZ_KIND)
+        cfg = quiz.get_quiz(kind, lang) if kind else None
+        if not cfg or idx <= 0:
+            # Already on the first question — step back to category selection.
+            ctx.user_data[S_MODE] = None
+            await q.edit_message_text(
+                t("quiz_start", lang), reply_markup=quiz_select_kb(lang),
+            )
+            return
+        # Step one question back: drop the last answer, decrement the index.
+        idx -= 1
+        if ans:
+            ans.pop()
+        ctx.user_data[S_QUIZ_IDX] = idx
+        ctx.user_data[S_QUIZ_ANS] = ans
+        await q.edit_message_text(
+            t("quiz_q_header", lang).format(
+                n=idx + 1, total=cfg["total"], q=cfg["questions"][idx]),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=yes_no_kb(lang),
+        )
+        return
+
     if data.startswith("q:"):
         await handle_quiz_answer(update, ctx, data == "q:yes")
         return
 
     if data == "book":
         ctx.user_data[S_MODE] = "lead"
-        await q.edit_message_text(t("lead_prompt", lang), parse_mode=ParseMode.MARKDOWN)
+        await q.edit_message_text(
+            t("lead_prompt", lang), parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ]),
+        )
         return
 
     if data == "pricing":
@@ -754,6 +788,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["checklist_kind"] = kind
         await q.edit_message_text(
             t("checklist_contact_prompt", lang), parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="checklist")],
+            ]),
         )
         return
 

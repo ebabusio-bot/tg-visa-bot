@@ -33,8 +33,17 @@ def _lang_directive(lang: str) -> str:
             "маркер <<CONSULT>> в самом конце ответа. Маркер — служебный, НЕ переводи и НЕ изменяй его."
         )
     native = LANG_NATIVE.get(lang, "English")
+    uk_note = ""
+    if lang == "uk":
+        uk_note = (
+            "• ВАЖЛИВО про українську: пиши природною, літературною українською мовою. "
+            "НЕ калькуй російську граматику, порядок слів чи лексику. Уникай русизмів. "
+            "Використовуй питомі українські слова та звороти, перевіряй закінчення відмінків "
+            "і роди. Текст має звучати так, ніби його одразу написав носій української мови.\n"
+        )
     return (
         f"OUTPUT LANGUAGE: respond ENTIRELY in {native} (lang code: {lang}).\n"
+        f"{uk_note}"
         "• The knowledge base is in Russian — translate every answer to the user's language.\n"
         "• Preserve ALL numeric facts exactly (fees, dates, processing times, dollar amounts, percentages). "
         "Never change a number when translating.\n"
@@ -130,6 +139,14 @@ async def translate(text_ru: str, lang: str) -> str:
     if lang == "ru":
         return text_ru
     native = LANG_NATIVE.get(lang, "English")
+    uk_rule = ""
+    if lang == "uk":
+        uk_rule = (
+            "• CRITICAL for Ukrainian: produce natural, literary Ukrainian. Do NOT calque "
+            "Russian grammar, word order or vocabulary; avoid russisms; use native Ukrainian "
+            "words and check case endings and genders. It must read as originally written "
+            "by a native Ukrainian speaker, not as a word-for-word conversion from Russian.\n"
+        )
     resp = await _get_client().messages.create(
         model=MODEL,
         max_tokens=1500,
@@ -139,6 +156,7 @@ async def translate(text_ru: str, lang: str) -> str:
                 f"You are a precise translator. Translate the USER message from Russian "
                 f"into {native} (language code: {lang}).\n"
                 "Rules:\n"
+                f"{uk_rule}"
                 "• Preserve all numeric values, dates, fees, percentages EXACTLY.\n"
                 "• Preserve Markdown formatting (asterisks, underscores, newlines) as-is.\n"
                 "• Keep the following in original English form: EB-1A, EB-1B, EB-1C, EB-2, "

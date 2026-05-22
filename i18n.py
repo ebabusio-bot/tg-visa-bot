@@ -7,12 +7,8 @@ DEFAULT_LANG = "ru"
 LANGUAGES: list[tuple[str, str, str]] = [
     ("en", "🇬🇧", "English"),
     ("es", "🇪🇸", "Español"),
-    ("fr", "🇫🇷", "Français"),
-    ("uk", "🇺🇦", "Українська"),
     ("ru", "🇷🇺", "Русский"),
-    ("pt", "🇵🇹", "Português"),
-    ("ht", "🇭🇹", "Kreyòl Ayisyen"),
-    ("hi", "🇮🇳", "हिन्दी"),
+    ("uk", "🇺🇦", "Українська"),
 ]
 
 LANG_CODES = {c for c, _, _ in LANGUAGES}
@@ -39,9 +35,7 @@ LANG_NATIVE: dict[str, str] = {c: n for c, _, n in LANGUAGES}
 # supported language at once so the user can recognise their own).
 LANGUAGE_PICKER_PROMPT = (
     "🌐 Please choose your language · Por favor, elija su idioma · "
-    "Veuillez choisir votre langue · Будь ласка, оберіть мову · "
-    "Пожалуйста, выберите язык · Escolha o seu idioma · "
-    "Tanpri chwazi lang ou · कृपया अपनी भाषा चुनें"
+    "Пожалуйста, выберите язык · Будь ласка, оберіть мову"
 )
 
 
