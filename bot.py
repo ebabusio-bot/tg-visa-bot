@@ -202,9 +202,11 @@ async def notify_admin_conversation(bot, user, user_msg: str, bot_answer: str, l
 
 # ────────────────────────────────────────────────────────────── keyboards
 
-def language_kb() -> InlineKeyboardMarkup:
+def language_kb(back_lang: str | None = None) -> InlineKeyboardMarkup:
     """Keyboard with flag+native-name buttons for every supported language.
-    Arranged in 2 columns, last row may have a single button."""
+    Arranged in 2 columns, last row may have a single button.
+    If back_lang is given (language already chosen — picker opened to *change*
+    it), a 'back to menu' button is appended in that language."""
     rows = []
     row = []
     for code, flag, native in LANGUAGES:
@@ -214,6 +216,8 @@ def language_kb() -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
+    if back_lang:
+        rows.append([InlineKeyboardButton(t("btn_back", back_lang), callback_data="menu")])
     return InlineKeyboardMarkup(rows)
 
 def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
@@ -318,9 +322,11 @@ async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_lang(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Change language."""
+    saved = db.get_user_lang(update.effective_user.id)
+    back = saved if saved in i18n.LANG_CODES else None
     await update.message.reply_text(
         i18n.LANGUAGE_PICKER_PROMPT,
-        reply_markup=language_kb(),
+        reply_markup=language_kb(back_lang=back),
     )
 
 async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -627,7 +633,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "lang":
         await q.edit_message_text(
             i18n.LANGUAGE_PICKER_PROMPT,
-            reply_markup=language_kb(),
+            reply_markup=language_kb(back_lang=lang),
         )
         return
 
@@ -637,6 +643,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             t("ask_prompt", lang).format(left=left, total=DAILY_LIMIT),
             parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ]),
         )
         return
 
