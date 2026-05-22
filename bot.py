@@ -936,9 +936,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not allowed:
         await update.message.reply_text(
             t("limit_reached", lang),
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(t("btn_book", lang), callback_data="book")
-            ]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ]),
         )
         return
 
@@ -960,12 +961,16 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     left = DAILY_LIMIT - new_count
     footer = t("footer_remaining", lang).format(left=left, total=DAILY_LIMIT)
 
-    kb = None
     if offer_consultation:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t("btn_book",        lang), callback_data="book")],
             [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
             [InlineKeyboardButton(t("btn_back",        lang), callback_data="menu")],
+        ])
+    else:
+        # Always give the user a way out of the Q&A mode.
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
         ])
 
     parts = split_for_telegram(answer)
