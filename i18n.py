@@ -119,6 +119,8 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Задайте ваш вопрос по EB-1A, EB-2 NIW, O-1, E-2 или убежищу. "
             "Отвечаю на основе правил USCIS.\n\n"
+            "ℹ️ Бесплатно можно задать до {total} вопросов в день. "
+            "Когда лимит закончится, предложим записаться на консультацию со специалистом.\n\n"
             "_Осталось сообщений сегодня: {left}/{total}_"
         ),
         "quiz_start": "Оценка шансов по критериям USCIS.\n\nПо какой визе хотите пройти анкету?",
@@ -343,6 +345,8 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Поставте своє питання про EB-1A, EB-2 NIW, O-1, E-2 або притулок. "
             "Відповідаю на основі правил USCIS.\n\n"
+            "ℹ️ Безкоштовно можна поставити до {total} запитань на день. "
+            "Коли ліміт закінчиться, запропонуємо записатися на консультацію зі спеціалістом.\n\n"
             "_Залишилось повідомлень сьогодні: {left}/{total}_"
         ),
         "quiz_start": "Оцінка шансів за критеріями USCIS.\n\nЗа якою візою хочете пройти анкету?",
@@ -577,6 +581,8 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Ask your question about EB-1A, EB-2 NIW, O-1, E-2 or asylum. "
             "I answer based on USCIS rules.\n\n"
+            "ℹ️ You can ask up to {total} questions per day for free. "
+            "Once the limit is reached, we'll invite you to book a consultation with a specialist.\n\n"
             "_Messages left today: {left}/{total}_"
         ),
         "quiz_start": "Chance evaluation by USCIS criteria.\n\nWhich visa quiz would you like to take?",
@@ -799,6 +805,8 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Haga su pregunta sobre EB-1A, EB-2 NIW, O-1, E-2 o asilo. "
             "Respondo con base en las reglas de USCIS.\n\n"
+            "ℹ️ Puede hacer hasta {total} preguntas al día de forma gratuita. "
+            "Cuando se agote el límite, le propondremos agendar una consulta con un especialista.\n\n"
             "_Mensajes restantes hoy: {left}/{total}_"
         ),
         "quiz_start": "Evaluación de posibilidades según criterios de USCIS.\n\n¿Qué cuestionario quiere hacer?",
