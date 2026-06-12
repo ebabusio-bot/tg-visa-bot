@@ -29,7 +29,7 @@ load_dotenv()
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"].strip()
 ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"].strip())
-DAILY_LIMIT = 15
+DAILY_LIMIT = 25
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -265,7 +265,10 @@ def yes_no_kb(lang: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(t("btn_back", lang), callback_data="q:back")],
     ])
 
-def post_quiz_kb(lang: str) -> InlineKeyboardMarkup:
+def offer_book_kb(lang: str) -> InlineKeyboardMarkup:
+    """Prominent 'book a consultation' CTA + a way back to the menu.
+    Shown after the quiz verdict, after the free checklist, and when the
+    daily question limit is reached."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
         [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
@@ -885,7 +888,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     db.save_lead(u.id, u.username, f"{kind}: {sum(ans)}/{cfg['total']}", "quiz")
 
     await q.edit_message_text(verdict_user, parse_mode=ParseMode.MARKDOWN,
-                              reply_markup=post_quiz_kb(lang))
+                              reply_markup=offer_book_kb(lang))
 
 # ────────────────────────────────────────────────────────────── messages
 
@@ -944,11 +947,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
     if not allowed:
         await update.message.reply_text(
-            t("limit_reached", lang),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
-                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
-            ]),
+            t("limit_reached", lang).format(total=DAILY_LIMIT),
+            reply_markup=offer_book_kb(lang),
         )
         return
 
@@ -970,7 +970,11 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     left = DAILY_LIMIT - new_count
     footer = t("footer_remaining", lang).format(left=left, total=DAILY_LIMIT)
 
-    if offer_consultation:
+    if left <= 0:
+        # Just used the last allowed question — proactively invite to book a
+        # consultation instead of waiting for them to hit the wall next time.
+        kb = offer_book_kb(lang)
+    elif offer_consultation:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t("btn_book",        lang), callback_data="book")],
             [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
@@ -1110,7 +1114,7 @@ async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.pop("checklist_kind", None)
     await update.message.reply_text(t("checklist_sent", lang), parse_mode=ParseMode.MARKDOWN)
     await safe_send(ctx.bot, update.effective_chat.id, checklist_txt,
-                    parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu_kb(lang))
+                    parse_mode=ParseMode.MARKDOWN, reply_markup=offer_book_kb(lang))
 
 async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Forward attachment sent during lead (booking) mode to the admin."""

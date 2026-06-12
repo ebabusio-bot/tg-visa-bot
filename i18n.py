@@ -131,7 +131,7 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Неизвестная категория анкеты.",
 
         "limit_reached": (
-            "Вы достигли дневного лимита в 15 сообщений. "
+            "Вы достигли дневного лимита в {total} сообщений. "
             "Для продолжения рекомендую связаться с нашими специалистами — они разберут вашу ситуацию индивидуально.\n\n"
             "Лимит сбросится через 24 часа."
         ),
@@ -355,7 +355,7 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Невідома категорія анкети.",
 
         "limit_reached": (
-            "Ви досягли денного ліміту у 15 повідомлень. "
+            "Ви досягли денного ліміту у {total} повідомлень. "
             "Для продовження рекомендую звернутися до фахівця — він розбере вашу ситуацію індивідуально.\n\n"
             "Ліміт скинеться через 24 години."
         ),
@@ -589,7 +589,7 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Unknown quiz category.",
 
         "limit_reached": (
-            "You've reached the daily limit of 15 messages. "
+            "You've reached the daily limit of {total} messages. "
             "To continue, I recommend contacting a specialist — they'll review your case individually.\n\n"
             "Limit resets in 24 hours."
         ),
@@ -811,7 +811,7 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Categoría de cuestionario desconocida.",
 
         "limit_reached": (
-            "Ha alcanzado el límite diario de 15 mensajes. "
+            "Ha alcanzado el límite diario de {total} mensajes. "
             "Para continuar, le recomiendo contactar a un especialista — revisará su caso individualmente.\n\n"
             "El límite se restablece en 24 horas."
         ),
@@ -1032,7 +1032,7 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Catégorie de questionnaire inconnue.",
 
         "limit_reached": (
-            "Vous avez atteint la limite quotidienne de 15 messages. "
+            "Vous avez atteint la limite quotidienne de {total} messages. "
             "Pour continuer, contactez un spécialiste — il examinera votre cas individuellement.\n\n"
             "La limite se réinitialise sous 24 heures."
         ),
