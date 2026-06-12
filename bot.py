@@ -29,7 +29,7 @@ load_dotenv()
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"].strip()
 ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"].strip())
-DAILY_LIMIT = 25
+QUESTION_LIMIT = 25
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -642,9 +642,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "ask":
         ctx.user_data[S_MODE] = None
-        left = max(0, DAILY_LIMIT - db.get_today_count(u.id))
+        left = max(0, QUESTION_LIMIT - db.get_total_count(u.id))
         await q.edit_message_text(
-            t("ask_prompt", lang).format(left=left, total=DAILY_LIMIT),
+            t("ask_prompt", lang).format(left=left, total=QUESTION_LIMIT),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
@@ -944,10 +944,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _deliver_checklist(update, ctx)
         return
 
-    allowed, new_count = db.try_consume_daily(u.id, DAILY_LIMIT)
+    allowed, new_count = db.try_consume_total(u.id, QUESTION_LIMIT)
     if not allowed:
         await update.message.reply_text(
-            t("limit_reached", lang).format(total=DAILY_LIMIT),
+            t("limit_reached", lang).format(total=QUESTION_LIMIT),
             reply_markup=offer_book_kb(lang),
         )
         return
@@ -967,8 +967,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.save_msg(u.id, "user", text)
     db.save_msg(u.id, "assistant", answer)
 
-    left = DAILY_LIMIT - new_count
-    footer = t("footer_remaining", lang).format(left=left, total=DAILY_LIMIT)
+    left = QUESTION_LIMIT - new_count
+    footer = t("footer_remaining", lang).format(left=left, total=QUESTION_LIMIT)
 
     if left <= 0:
         # Just used the last allowed question — proactively invite to book a
@@ -1247,7 +1247,7 @@ def main():
     app.job_queue.run_repeating(job_check_reengagement, interval=3600, first=600)
     app.job_queue.run_repeating(job_check_lead_followup, interval=3600, first=900)
     app.job_queue.run_daily(job_daily_summary, time=dt_time(9, 0, tzinfo=ADMIN_TZ))
-    log.info("Bot started. Model=%s, daily_limit=%d", llm.MODEL, DAILY_LIMIT)
+    log.info("Bot started. Model=%s, question_limit=%d", llm.MODEL, QUESTION_LIMIT)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":

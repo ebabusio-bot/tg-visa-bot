@@ -119,9 +119,9 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Задайте ваш вопрос по EB-1A, EB-2 NIW, O-1, E-2 или убежищу. "
             "Отвечаю на основе правил USCIS.\n\n"
-            "ℹ️ Бесплатно можно задать до {total} вопросов в день. "
+            "ℹ️ Можно задать до {total} вопросов. "
             "Когда лимит закончится, предложим записаться на консультацию со специалистом.\n\n"
-            "_Осталось сообщений сегодня: {left}/{total}_"
+            "_Осталось вопросов: {left}/{total}_"
         ),
         "quiz_start": "Оценка шансов по критериям USCIS.\n\nПо какой визе хотите пройти анкету?",
         "quiz_q_header": "*Вопрос {n} из {total}:*\n\n{q}",
@@ -133,11 +133,10 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Неизвестная категория анкеты.",
 
         "limit_reached": (
-            "Вы достигли дневного лимита в {total} сообщений. "
-            "Для продолжения рекомендую связаться с нашими специалистами — они разберут вашу ситуацию индивидуально.\n\n"
-            "Лимит сбросится через 24 часа."
+            "Вы достигли лимита в {total} вопросов. "
+            "Для продолжения рекомендую связаться с нашими специалистами — они разберут вашу ситуацию индивидуально."
         ),
-        "footer_remaining": "\n\n_Осталось сегодня: {left}/{total}_",
+        "footer_remaining": "\n\n_Осталось вопросов: {left}/{total}_",
         "llm_error": "Временная ошибка при обращении к базе знаний. Попробуйте ещё раз через минуту.",
 
         "lead_prompt": (
@@ -345,9 +344,9 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Поставте своє питання про EB-1A, EB-2 NIW, O-1, E-2 або притулок. "
             "Відповідаю на основі правил USCIS.\n\n"
-            "ℹ️ Безкоштовно можна поставити до {total} запитань на день. "
+            "ℹ️ Можна поставити до {total} запитань. "
             "Коли ліміт закінчиться, запропонуємо записатися на консультацію зі спеціалістом.\n\n"
-            "_Залишилось повідомлень сьогодні: {left}/{total}_"
+            "_Залишилось запитань: {left}/{total}_"
         ),
         "quiz_start": "Оцінка шансів за критеріями USCIS.\n\nЗа якою візою хочете пройти анкету?",
         "quiz_q_header": "*Питання {n} з {total}:*\n\n{q}",
@@ -359,11 +358,10 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Невідома категорія анкети.",
 
         "limit_reached": (
-            "Ви досягли денного ліміту у {total} повідомлень. "
-            "Для продовження рекомендую звернутися до фахівця — він розбере вашу ситуацію індивідуально.\n\n"
-            "Ліміт скинеться через 24 години."
+            "Ви досягли ліміту у {total} запитань. "
+            "Для продовження рекомендую звернутися до фахівця — він розбере вашу ситуацію індивідуально."
         ),
-        "footer_remaining": "\n\n_Залишилось сьогодні: {left}/{total}_",
+        "footer_remaining": "\n\n_Залишилось запитань: {left}/{total}_",
         "llm_error": "Тимчасова помилка при зверненні до бази знань. Спробуйте ще раз через хвилину.",
 
         "lead_prompt": (
@@ -581,9 +579,9 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Ask your question about EB-1A, EB-2 NIW, O-1, E-2 or asylum. "
             "I answer based on USCIS rules.\n\n"
-            "ℹ️ You can ask up to {total} questions per day for free. "
+            "ℹ️ You can ask up to {total} questions. "
             "Once the limit is reached, we'll invite you to book a consultation with a specialist.\n\n"
-            "_Messages left today: {left}/{total}_"
+            "_Questions left: {left}/{total}_"
         ),
         "quiz_start": "Chance evaluation by USCIS criteria.\n\nWhich visa quiz would you like to take?",
         "quiz_q_header": "*Question {n} of {total}:*\n\n{q}",
@@ -595,11 +593,10 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Unknown quiz category.",
 
         "limit_reached": (
-            "You've reached the daily limit of {total} messages. "
-            "To continue, I recommend contacting a specialist — they'll review your case individually.\n\n"
-            "Limit resets in 24 hours."
+            "You've reached the limit of {total} questions. "
+            "To continue, I recommend contacting a specialist — they'll review your case individually."
         ),
-        "footer_remaining": "\n\n_Remaining today: {left}/{total}_",
+        "footer_remaining": "\n\n_Questions left: {left}/{total}_",
         "llm_error": "Temporary error contacting the knowledge base. Please try again in a minute.",
 
         "lead_prompt": (
@@ -805,9 +802,9 @@ T: dict[str, dict[str, object]] = {
         "ask_prompt": (
             "Haga su pregunta sobre EB-1A, EB-2 NIW, O-1, E-2 o asilo. "
             "Respondo con base en las reglas de USCIS.\n\n"
-            "ℹ️ Puede hacer hasta {total} preguntas al día de forma gratuita. "
+            "ℹ️ Puede hacer hasta {total} preguntas. "
             "Cuando se agote el límite, le propondremos agendar una consulta con un especialista.\n\n"
-            "_Mensajes restantes hoy: {left}/{total}_"
+            "_Preguntas restantes: {left}/{total}_"
         ),
         "quiz_start": "Evaluación de posibilidades según criterios de USCIS.\n\n¿Qué cuestionario quiere hacer?",
         "quiz_q_header": "*Pregunta {n} de {total}:*\n\n{q}",
@@ -819,11 +816,10 @@ T: dict[str, dict[str, object]] = {
         "unknown_quiz": "Categoría de cuestionario desconocida.",
 
         "limit_reached": (
-            "Ha alcanzado el límite diario de {total} mensajes. "
-            "Para continuar, le recomiendo contactar a un especialista — revisará su caso individualmente.\n\n"
-            "El límite se restablece en 24 horas."
+            "Ha alcanzado el límite de {total} preguntas. "
+            "Para continuar, le recomiendo contactar a un especialista — revisará su caso individualmente."
         ),
-        "footer_remaining": "\n\n_Restantes hoy: {left}/{total}_",
+        "footer_remaining": "\n\n_Preguntas restantes: {left}/{total}_",
         "llm_error": "Error temporal al consultar la base de conocimientos. Intente de nuevo en un minuto.",
 
         "lead_prompt": (

@@ -168,6 +168,47 @@ def try_consume_daily(tg_id: int, limit: int) -> tuple[bool, int]:
     finally:
         c.close()
 
+# ── Lifetime (total) question counter ─────────────────────────────────────
+# Reuses the daily_count table with a fixed sentinel day='all', so there is
+# no schema migration and the count never resets.
+_TOTAL_DAY = "all"
+
+def get_total_count(tg_id: int) -> int:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT count FROM daily_count WHERE tg_id=? AND day=?",
+            (tg_id, _TOTAL_DAY),
+        ).fetchone()
+        return row["count"] if row else 0
+
+def try_consume_total(tg_id: int, limit: int) -> tuple[bool, int]:
+    """Atomically check-and-increment the lifetime question counter.
+
+    Returns (allowed, count_after_op). If the user is already at or above
+    the limit, returns (False, current_count) and does NOT increment.
+    Otherwise increments and returns (True, new_count).
+    """
+    c = _conn()
+    try:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT count FROM daily_count WHERE tg_id=? AND day=?",
+            (tg_id, _TOTAL_DAY),
+        ).fetchone()
+        current = row["count"] if row else 0
+        if current >= limit:
+            c.execute("ROLLBACK")
+            return False, current
+        c.execute(
+            "INSERT INTO daily_count(tg_id, day, count) VALUES(?,?,1) "
+            "ON CONFLICT(tg_id, day) DO UPDATE SET count=count+1",
+            (tg_id, _TOTAL_DAY),
+        )
+        c.execute("COMMIT")
+        return True, current + 1
+    finally:
+        c.close()
+
 def save_lead(tg_id: int, username: str | None, payload: str, source: str):
     with _conn() as c:
         c.execute(
