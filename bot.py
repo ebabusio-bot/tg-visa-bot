@@ -522,6 +522,40 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for chunk in (today, week, all_time):
         await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
 
+def _format_costs() -> str:
+    """Build the AI-cost report: totals for today / 7 days / all time + months."""
+    def block(days, title):
+        u = db.usage_totals(days)
+        toks = (u["input_tokens"] + u["output_tokens"]
+                + u["cache_write_tokens"] + u["cache_read_tokens"])
+        return (
+            f"*{title}:* ${u['cost_usd']:.2f} · "
+            f"{u['calls']} запросов · {toks:,} токенов"
+        )
+    allu = db.usage_totals(None)
+    lines = [
+        "💵 *Расходы на ИИ* (модель Claude)\n",
+        block(0, "Сегодня"),
+        block(7, "7 дней"),
+        block(30, "30 дней"),
+        block(None, "Всего"),
+    ]
+    if allu["months"]:
+        lines.append("\n*По месяцам:*")
+        for m in allu["months"]:
+            lines.append(f"• {m['month']}: ${m['cost_usd']:.2f} ({m['calls']} запр.)")
+    lines.append(
+        "\n_Это себестоимость ИИ для этого бота (одна фирма). "
+        "У каждой фирмы — свой бот и свой счёт._"
+    )
+    return "\n".join(lines)
+
+async def cmd_costs(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: show AI spend (today / 7 / 30 days / all + monthly breakdown)."""
+    if not _is_admin(update):
+        return
+    await update.message.reply_text(_format_costs(), parse_mode=ParseMode.MARKDOWN)
+
 KIND_NAMES = {"eb1a": "EB-1A", "niw": "EB-2 NIW", "o1": "O-1", "e2": "E-2"}
 
 async def send_quiz_reminder(bot, tg_id: int, kind: str, stage: int):
@@ -877,7 +911,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     # Translate verdict for non-Russian users.
     if lang != "ru":
         try:
-            verdict_user = await llm.translate(verdict_ru, lang)
+            verdict_user = await llm.translate(verdict_ru, lang, user_id=u.id)
         except Exception:
             log.exception("verdict translation failed; falling back to Russian + note")
             # Prepend a short English note so a non-RU reader at least
@@ -986,7 +1020,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.log_event(u.id, "qa_ask")
     history = db.recent_history(u.id, limit=8)
     try:
-        answer, offer_consultation = await llm.ask(history, text, lang)
+        answer, offer_consultation = await llm.ask(history, text, lang, user_id=u.id)
     except Exception:
         log.exception("LLM error")
         db.save_msg(u.id, "user", text)
@@ -1118,7 +1152,7 @@ async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     checklist_ru = _p.CHECKLISTS.get(kind, _p.CHECKLIST_EB1A)
     if lang != "ru":
         try:
-            checklist_txt = await llm.translate(checklist_ru, lang)
+            checklist_txt = await llm.translate(checklist_ru, lang, user_id=u.id)
         except Exception:
             log.exception("checklist translation failed; sending Russian")
             checklist_txt = checklist_ru
@@ -1238,6 +1272,7 @@ def main():
     app.add_handler(CommandHandler("chat",    cmd_chat))
     app.add_handler(CommandHandler("leads",   cmd_leads))
     app.add_handler(CommandHandler("stats",   cmd_stats))
+    app.add_handler(CommandHandler("costs",   cmd_costs))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(

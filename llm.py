@@ -6,11 +6,42 @@ import re
 from anthropic import AsyncAnthropic
 from prompts import SYSTEM_PROMPT
 from i18n import LANG_NATIVE
+import db
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 1500
 
+# Price per 1M tokens (USD) for the model above. Cache write = 1.25x input,
+# cache read = 0.1x input. Keep in sync with MODEL.
+PRICE_PER_MTOK = {
+    "input":       3.00,
+    "output":      15.00,
+    "cache_write": 3.75,
+    "cache_read":  0.30,
+}
+
 log = logging.getLogger("llm")
+
+def _record_usage(resp, kind: str, user_id: int | None):
+    """Read token usage off an Anthropic response, compute its USD cost, and
+    log it per-user. Never raises — cost tracking must not break a reply."""
+    if user_id is None:
+        return
+    try:
+        u = resp.usage
+        inp   = getattr(u, "input_tokens", 0) or 0
+        out   = getattr(u, "output_tokens", 0) or 0
+        write = getattr(u, "cache_creation_input_tokens", 0) or 0
+        read  = getattr(u, "cache_read_input_tokens", 0) or 0
+        cost = (
+            inp   * PRICE_PER_MTOK["input"]
+            + out   * PRICE_PER_MTOK["output"]
+            + write * PRICE_PER_MTOK["cache_write"]
+            + read  * PRICE_PER_MTOK["cache_read"]
+        ) / 1_000_000
+        db.log_usage(user_id, kind, MODEL, inp, out, write, read, cost)
+    except Exception as e:
+        log.warning("usage logging failed: %s", e)
 
 _client: AsyncAnthropic | None = None
 
@@ -68,11 +99,13 @@ CONSULT_MARKER = "<<CONSULT>>"
 _CONSULT_RE = re.compile(r"\s*<<\s*CONSULT\s*>>\s*$", re.IGNORECASE)
 
 
-async def ask(history: list[dict], user_msg: str, lang: str = "ru") -> tuple[str, bool]:
+async def ask(history: list[dict], user_msg: str, lang: str = "ru",
+              user_id: int | None = None) -> tuple[str, bool]:
     """
     Returns (answer_text, offer_consultation).
     offer_consultation is True when the model emitted the <<CONSULT>> marker,
     which it does in every language when a human attorney is needed.
+    `user_id`, when given, attributes the token cost to that user for billing.
     """
     messages = list(history) + [{"role": "user", "content": user_msg}]
 
@@ -92,6 +125,7 @@ async def ask(history: list[dict], user_msg: str, lang: str = "ru") -> tuple[str
         ],
         messages=messages,
     )
+    _record_usage(resp, "ask", user_id)
 
     text = "".join(b.text for b in resp.content if b.type == "text").strip()
 
@@ -131,11 +165,11 @@ async def ask(history: list[dict], user_msg: str, lang: str = "ru") -> tuple[str
     return text, offer_consultation
 
 
-async def translate(text_ru: str, lang: str) -> str:
+async def translate(text_ru: str, lang: str, user_id: int | None = None) -> str:
     """One-shot translator for fixed strings (e.g. quiz verdicts).
     Preserves numbers, markdown, and US-immigration terms. Called when the
     user is not Russian-speaking and we need to show a Russian-authored
-    verdict in their language."""
+    verdict in their language. `user_id` attributes the cost for billing."""
     if lang == "ru":
         return text_ru
     native = LANG_NATIVE.get(lang, "English")
@@ -169,5 +203,6 @@ async def translate(text_ru: str, lang: str) -> str:
         }],
         messages=[{"role": "user", "content": text_ru}],
     )
+    _record_usage(resp, "translate", user_id)
     out = "".join(b.text for b in resp.content if b.type == "text").strip()
     return out or text_ru

@@ -67,6 +67,19 @@ def init_db():
             tg_id INTEGER PRIMARY KEY,
             sent_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER,
+            kind TEXT,                 -- 'ask' | 'translate'
+            model TEXT,
+            input_tokens INTEGER DEFAULT 0,
+            output_tokens INTEGER DEFAULT 0,
+            cache_write_tokens INTEGER DEFAULT 0,
+            cache_read_tokens INTEGER DEFAULT 0,
+            cost_usd REAL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_usage_time ON usage(created_at);
         """)
         # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -208,6 +221,56 @@ def try_consume_total(tg_id: int, limit: int) -> tuple[bool, int]:
         return True, current + 1
     finally:
         c.close()
+
+# ── AI cost tracking ──────────────────────────────────────────────────────
+def log_usage(tg_id: int, kind: str, model: str, input_tokens: int,
+              output_tokens: int, cache_write_tokens: int,
+              cache_read_tokens: int, cost_usd: float):
+    """Record one LLM call's token usage and computed cost (USD)."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO usage(tg_id, kind, model, input_tokens, output_tokens, "
+            "cache_write_tokens, cache_read_tokens, cost_usd) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (tg_id, kind, model, input_tokens, output_tokens,
+             cache_write_tokens, cache_read_tokens, cost_usd),
+        )
+
+def usage_totals(days: int | None = None) -> dict:
+    """Aggregate AI usage over the last `days` days (None = all time).
+    Returns totals: calls, tokens, cost, plus a per-month breakdown."""
+    where = ""
+    args: tuple = ()
+    if days is not None:
+        where = "WHERE created_at >= datetime('now', ?)"
+        args = (f"-{int(days)} days",)
+    with _conn() as c:
+        row = c.execute(
+            f"""SELECT COUNT(*) AS calls,
+                       COALESCE(SUM(input_tokens),0)        AS input_tokens,
+                       COALESCE(SUM(output_tokens),0)       AS output_tokens,
+                       COALESCE(SUM(cache_write_tokens),0)  AS cache_write_tokens,
+                       COALESCE(SUM(cache_read_tokens),0)   AS cache_read_tokens,
+                       COALESCE(SUM(cost_usd),0)            AS cost_usd
+                FROM usage {where}""",
+            args,
+        ).fetchone()
+        months = c.execute(
+            """SELECT substr(created_at,1,7) AS month,
+                      COUNT(*) AS calls,
+                      COALESCE(SUM(cost_usd),0) AS cost_usd
+               FROM usage
+               GROUP BY month ORDER BY month DESC LIMIT 12"""
+        ).fetchall()
+    return {
+        "calls": row["calls"],
+        "input_tokens": row["input_tokens"],
+        "output_tokens": row["output_tokens"],
+        "cache_write_tokens": row["cache_write_tokens"],
+        "cache_read_tokens": row["cache_read_tokens"],
+        "cost_usd": row["cost_usd"],
+        "months": [dict(m) for m in months],
+    }
 
 def save_lead(tg_id: int, username: str | None, payload: str, source: str):
     with _conn() as c:
