@@ -38,6 +38,13 @@ ADMIN_CHAT_IDS = [
 ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0]
 QUESTION_LIMIT = 25
 
+# Optional monthly AI budget (USD) for THIS bot/firm. When set, /costs shows
+# how much of the month's budget is left. Unset/0 → no remaining line.
+try:
+    AI_BUDGET_USD = float(os.environ.get("AI_BUDGET_USD", "0").strip() or "0")
+except ValueError:
+    AI_BUDGET_USD = 0.0
+
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     level=logging.INFO,
@@ -540,6 +547,19 @@ def _format_costs() -> str:
         block(30, "30 дней"),
         block(None, "Всего"),
     ]
+    if AI_BUDGET_USD > 0:
+        spent_m = db.cost_this_month()
+        left = AI_BUDGET_USD - spent_m
+        pct = max(0, left) / AI_BUDGET_USD * 100
+        warn = "  ⚠️" if left < AI_BUDGET_USD * 0.2 else ""
+        if left < 0:
+            status = f"*превышен на ${-left:.2f}* ⚠️"
+        else:
+            status = f"осталось *${left:.2f}* ({pct:.0f}%){warn}"
+        lines.append(
+            f"\n💰 *Бюджет на месяц:* ${AI_BUDGET_USD:.2f}\n"
+            f"Потрачено в этом месяце: ${spent_m:.2f} · {status}"
+        )
     if allu["months"]:
         lines.append("\n*По месяцам:*")
         for m in allu["months"]:

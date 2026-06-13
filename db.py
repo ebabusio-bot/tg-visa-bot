@@ -272,6 +272,15 @@ def usage_totals(days: int | None = None) -> dict:
         "months": [dict(m) for m in months],
     }
 
+def cost_this_month() -> float:
+    """Total AI cost (USD) for the current calendar month."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT COALESCE(SUM(cost_usd),0) AS c FROM usage "
+            "WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m','now')"
+        ).fetchone()
+        return row["c"] or 0.0
+
 def save_lead(tg_id: int, username: str | None, payload: str, source: str):
     with _conn() as c:
         c.execute(
