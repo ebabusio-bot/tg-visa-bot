@@ -28,7 +28,14 @@ from i18n import t, LANGUAGES, LANG_FLAGS, LANG_NAMES_RU, normalize_lang
 load_dotenv()
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"].strip()
-ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"].strip())
+# ADMIN_CHAT_ID may hold one id or several, comma/semicolon-separated, e.g.
+# "111222333" or "111222333,444555666". All of them receive notifications and
+# may use admin commands. The first one is treated as the primary admin.
+ADMIN_CHAT_IDS = [
+    int(x) for x in os.environ["ADMIN_CHAT_ID"].replace(";", ",").split(",")
+    if x.strip()
+]
+ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0]
 QUESTION_LIMIT = 25
 
 logging.basicConfig(
@@ -111,6 +118,31 @@ async def safe_send(bot, chat_id: int, text: str, **kwargs):
         kwargs.pop("parse_mode", None)
         return await bot.send_message(chat_id, text, **kwargs)
 
+async def broadcast_admin(bot, text: str, **kwargs):
+    """Send the same notification to every configured admin.
+    One failing admin (e.g. blocked the bot) never blocks the others."""
+    for aid in ADMIN_CHAT_IDS:
+        try:
+            await safe_send(bot, aid, text, **kwargs)
+        except Exception as e:
+            log.warning("admin broadcast to %s failed: %s", aid, e)
+
+async def forward_to_admins(bot, from_chat_id: int, message_id: int):
+    """Forward a user's message to every admin. Raises only if it could not be
+    delivered to a single admin, so callers can still detect total failure."""
+    ok = False
+    last_err = None
+    for aid in ADMIN_CHAT_IDS:
+        try:
+            await bot.forward_message(chat_id=aid, from_chat_id=from_chat_id,
+                                      message_id=message_id)
+            ok = True
+        except Exception as e:
+            last_err = e
+            log.warning("forward to admin %s failed: %s", aid, e)
+    if not ok and last_err is not None:
+        raise last_err
+
 def user_lang(user_id: int) -> str:
     """Return saved language code for user, or DEFAULT_LANG ('ru') if not set."""
     return normalize_lang(db.get_user_lang(user_id))
@@ -172,7 +204,7 @@ async def notify_admin_activity(bot, user, label: str, lang: str | None = None,
             f"👆 {mention} ({uname_html}, id {id_link})\n"
             f"{html.escape(label)}{lang_tag}"
         )
-        await bot.send_message(ADMIN_CHAT_ID, text, parse_mode=ParseMode.HTML,
+        await broadcast_admin(bot, text, parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True)
         log.info("admin activity notify sent: user=%s label=%s", user.id, label)
     except Exception as e:
@@ -189,11 +221,11 @@ async def notify_admin_conversation(bot, user, user_msg: str, bot_answer: str, l
             f"💬 *Диалог* · {fmt_user_md(user)} · {md_esc(lang_badge(lang))}\n\n"
             f"*👤 Вопрос пользователя:*\n{md_esc(user_msg)}"
         )
-        await safe_send(bot, ADMIN_CHAT_ID, header, parse_mode=ParseMode.MARKDOWN,
+        await broadcast_admin(bot, header, parse_mode=ParseMode.MARKDOWN,
                         disable_web_page_preview=True)
         answer_body = "🤖 *Ответ бота:*\n\n" + bot_answer
         for part in split_for_telegram(answer_body):
-            await safe_send(bot, ADMIN_CHAT_ID, part, parse_mode=ParseMode.MARKDOWN,
+            await broadcast_admin(bot, part, parse_mode=ParseMode.MARKDOWN,
                             disable_web_page_preview=True)
         log.info("admin conversation notify sent: user=%s q_chars=%d a_chars=%d",
                  user.id, len(user_msg), len(bot_answer))
@@ -335,11 +367,11 @@ async def cmd_lang(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Diagnostic: show user's Telegram ID and whether it matches ADMIN_CHAT_ID."""
     u = update.effective_user
-    is_admin = u and u.id == ADMIN_CHAT_ID
+    is_admin = u and u.id in ADMIN_CHAT_IDS
     lang = db.get_user_lang(u.id) or "—"
     await update.message.reply_text(
         f"Ваш Telegram user ID: {u.id}\n"
-        f"ADMIN ID в настройках бота: {ADMIN_CHAT_ID}\n"
+        f"ADMIN ID в настройках бота: {', '.join(map(str, ADMIN_CHAT_IDS))}\n"
         f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}\n"
         f"Язык: {lang}"
     )
@@ -350,8 +382,7 @@ async def cmd_testnotify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     u = update.effective_user
     try:
-        await ctx.bot.send_message(
-            ADMIN_CHAT_ID,
+        await broadcast_admin(ctx.bot,
             f"🔔 Тестовое уведомление\nОт /testnotify, user id {u.id}"
         )
         await update.message.reply_text(
@@ -367,7 +398,7 @@ def _is_admin(update: Update) -> bool:
     u = update.effective_user
     c = update.effective_chat
     return bool(
-        (u and u.id == ADMIN_CHAT_ID) or (c and c.id == ADMIN_CHAT_ID)
+        (u and u.id in ADMIN_CHAT_IDS) or (c and c.id in ADMIN_CHAT_IDS)
     )
 
 async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -587,7 +618,7 @@ async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
     """Daily 09:00 MSK admin report covering yesterday's full day."""
     text = _format_stats(1, "Сводка за последние 24 часа")
     try:
-        await ctx.bot.send_message(ADMIN_CHAT_ID, text, parse_mode=ParseMode.MARKDOWN)
+        await broadcast_admin(ctx.bot, text, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         log.warning("daily summary FAILED: %s", e)
 
@@ -751,9 +782,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         db.save_lead(u.id, u.username, "Бесплатный разбор кейса (см. пересланные сообщения)", "case_review")
         try:
-            await safe_send(
-                ctx.bot,
-                ADMIN_CHAT_ID,
+            await broadcast_admin(ctx.bot,
                 f"✅ *Завершён сбор материалов* для бесплатного разбора\n\n"
                 f"От: {fmt_user_md(u)}\n"
                 f"Язык: {md_esc(lang_badge(lang))}\n"
@@ -882,7 +911,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         f"{md_esc(detail)}"
     )
     try:
-        await safe_send(ctx.bot, ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
+        await broadcast_admin(ctx.bot, admin_txt, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         log.warning("admin notify failed: %s", e)
     db.save_lead(u.id, u.username, f"{kind}: {sum(ans)}/{cfg['total']}", "quiz")
@@ -926,7 +955,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"{md_esc(text)}"
         )
         try:
-            await safe_send(ctx.bot, ADMIN_CHAT_ID, admin_txt, parse_mode=ParseMode.MARKDOWN)
+            await broadcast_admin(ctx.bot, admin_txt, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             log.warning("admin notify failed: %s", e)
         await update.message.reply_text(t("lead_received", lang), reply_markup=main_menu_kb(lang))
@@ -1006,9 +1035,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
 
     if not ctx.user_data.get("case_review_started"):
         try:
-            await safe_send(
-                ctx.bot,
-                ADMIN_CHAT_ID,
+            await broadcast_admin(ctx.bot,
                 f"🆓 *Новая заявка на бесплатный разбор*\n\n"
                 f"От: {fmt_user_md(u)}\n"
                 f"Язык: {md_esc(lang_badge(lang))}\n"
@@ -1021,11 +1048,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
 
     forwarded = True
     try:
-        await ctx.bot.forward_message(
-            chat_id=ADMIN_CHAT_ID,
-            from_chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-        )
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
     except Exception as e:
         forwarded = False
         log.warning("forward failed: %s", e)
@@ -1050,20 +1073,14 @@ async def _forward_support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     delivered = True
     try:
-        await safe_send(
-            ctx.bot,
-            ADMIN_CHAT_ID,
+        await broadcast_admin(ctx.bot,
             f"🛠 *Обращение в техподдержку*\n\n"
             f"От: {fmt_user_md(u)}\n"
             f"Язык: {md_esc(lang_badge(lang))}\n"
             f"_Сообщение пользователя ниже:_",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await ctx.bot.forward_message(
-            chat_id=ADMIN_CHAT_ID,
-            from_chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-        )
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
     except Exception as e:
         delivered = False
         log.warning("support forward failed: %s", e)
@@ -1088,9 +1105,7 @@ async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.save_lead(u.id, u.username, f"Чеклист {kind.upper()}: {contact}", f"checklist:{kind}")
     db.log_event(u.id, "lead", f"checklist:{kind}")
     try:
-        await safe_send(
-            ctx.bot,
-            ADMIN_CHAT_ID,
+        await broadcast_admin(ctx.bot,
             f"🎁 *Заявка на чеклист* — {md_esc(kind.upper())}\n\n"
             f"От: {fmt_user_md(u)}\n"
             f"Язык: {md_esc(lang_badge(lang))}\n"
@@ -1123,9 +1138,7 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
     lang = user_lang(u.id)
     db.save_lead(u.id, u.username, "Файл приложен к заявке (см. пересланное сообщение)", "booking_file")
     try:
-        await safe_send(
-            ctx.bot,
-            ADMIN_CHAT_ID,
+        await broadcast_admin(ctx.bot,
             f"📎 *Файл к заявке на консультацию*\n\n"
             f"От: {fmt_user_md(u)}\n"
             f"Язык: {md_esc(lang_badge(lang))}\n"
@@ -1137,11 +1150,7 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
 
     forwarded = True
     try:
-        await ctx.bot.forward_message(
-            chat_id=ADMIN_CHAT_ID,
-            from_chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-        )
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
     except Exception as e:
         forwarded = False
         log.warning("forward failed: %s", e)
@@ -1211,7 +1220,7 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
             f"```\n{tb}\n```"
         )
         alert = alert[:4000]
-        await ctx.bot.send_message(ADMIN_CHAT_ID, alert, parse_mode=ParseMode.MARKDOWN)
+        await broadcast_admin(ctx.bot, alert, parse_mode=ParseMode.MARKDOWN)
     except Exception:
         log.exception("Failed to send error alert to admin")
 
