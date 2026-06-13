@@ -1,17 +1,33 @@
 # -*- coding: utf-8 -*-
 """Multi-language UI strings. Admin-facing text stays Russian in bot.py."""
 
-DEFAULT_LANG = "ru"
+import os
 
-# (code, flag, native_name, display_for_button)
-LANGUAGES: list[tuple[str, str, str]] = [
+# All languages this codebase has translations for. A single deployment can
+# expose a subset via the BOT_LANGS env var, so the same code can run as a
+# RU/UK/EN/ES bot and, separately, as an EN/ES-only bot — no code fork.
+# (code, flag, native_name)
+_ALL_LANGUAGES: list[tuple[str, str, str]] = [
     ("en", "🇬🇧", "English"),
     ("es", "🇪🇸", "Español"),
     ("ru", "🇷🇺", "Русский"),
     ("uk", "🇺🇦", "Українська"),
 ]
 
+# BOT_LANGS, e.g. "en,es" — restrict which languages this instance offers.
+# Unset/empty → all of the above (current default behaviour).
+_enabled = [c.strip() for c in os.environ.get("BOT_LANGS", "").replace(";", ",").split(",") if c.strip()]
+LANGUAGES: list[tuple[str, str, str]] = (
+    [row for row in _ALL_LANGUAGES if row[0] in _enabled] or _ALL_LANGUAGES
+)
+
 LANG_CODES = {c for c, _, _ in LANGUAGES}
+
+# DEFAULT_LANG env, e.g. "en". Must be one of the enabled languages, otherwise
+# we fall back to the first enabled one.
+DEFAULT_LANG = (os.environ.get("DEFAULT_LANG", "ru").strip() or "ru")
+if DEFAULT_LANG not in LANG_CODES:
+    DEFAULT_LANG = LANGUAGES[0][0]
 
 # For admin-facing text (Russian).
 LANG_NAMES_RU: dict[str, str] = {
@@ -32,10 +48,15 @@ LANG_FLAGS: dict[str, str] = {c: f for c, f, _ in LANGUAGES}
 LANG_NATIVE: dict[str, str] = {c: n for c, _, n in LANGUAGES}
 
 # Multilingual initial language prompt (shown before any greeting, in every
-# supported language at once so the user can recognise their own).
-LANGUAGE_PICKER_PROMPT = (
-    "🌐 Please choose your language · Por favor, elija su idioma · "
-    "Пожалуйста, выберите язык · Будь ласка, оберіть мову"
+# ENABLED language at once so the user can recognise their own).
+_PICKER_PHRASES: dict[str, str] = {
+    "en": "Please choose your language",
+    "es": "Por favor, elija su idioma",
+    "ru": "Пожалуйста, выберите язык",
+    "uk": "Будь ласка, оберіть мову",
+}
+LANGUAGE_PICKER_PROMPT = "🌐 " + " · ".join(
+    _PICKER_PHRASES.get(c, c) for c, _, _ in LANGUAGES
 )
 
 
