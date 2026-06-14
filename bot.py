@@ -38,6 +38,10 @@ ADMIN_CHAT_IDS = [
 ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0]
 QUESTION_LIMIT = 25
 
+# The second configured admin (if any) gets unlimited questions — the total
+# question cap is not enforced for them. Listed here so it's easy to extend.
+UNLIMITED_IDS = set(ADMIN_CHAT_IDS[1:2])
+
 # Optional monthly AI budget (USD) for THIS bot/firm. When set, /costs shows
 # how much of the month's budget is left. Unset/0 → no remaining line.
 try:
@@ -815,7 +819,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "ask":
         ctx.user_data[S_MODE] = None
-        left = max(0, QUESTION_LIMIT - db.get_total_count(u.id))
+        # Unlimited user (second admin): show a full quota so no countdown looks off.
+        if u.id in UNLIMITED_IDS:
+            left = QUESTION_LIMIT
+        else:
+            left = max(0, QUESTION_LIMIT - db.get_total_count(u.id))
         await q.edit_message_text(
             t("ask_prompt", lang).format(left=left, total=QUESTION_LIMIT),
             parse_mode=ParseMode.MARKDOWN,
@@ -1126,13 +1134,17 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _deliver_checklist(update, ctx)
         return
 
-    allowed, new_count = db.try_consume_total(u.id, QUESTION_LIMIT)
-    if not allowed:
-        await update.message.reply_text(
-            t("limit_reached", lang).format(total=QUESTION_LIMIT),
-            reply_markup=offer_book_kb(lang),
-        )
-        return
+    if u.id in UNLIMITED_IDS:
+        # Unlimited user (second admin): don't enforce or count toward the cap.
+        new_count = 0
+    else:
+        allowed, new_count = db.try_consume_total(u.id, QUESTION_LIMIT)
+        if not allowed:
+            await update.message.reply_text(
+                t("limit_reached", lang).format(total=QUESTION_LIMIT),
+                reply_markup=offer_book_kb(lang),
+            )
+            return
 
     await ctx.bot.send_chat_action(update.effective_chat.id, "typing")
 
@@ -1149,10 +1161,23 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.save_msg(u.id, "user", text)
     db.save_msg(u.id, "assistant", answer)
 
+    unlimited = u.id in UNLIMITED_IDS
     left = QUESTION_LIMIT - new_count
-    footer = t("footer_remaining", lang).format(left=left, total=QUESTION_LIMIT)
+    footer = "" if unlimited else t("footer_remaining", lang).format(left=left, total=QUESTION_LIMIT)
 
-    if left <= 0:
+    if unlimited:
+        # No cap for this user: never push the "last question / book" prompt.
+        if offer_consultation:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_book",        lang), callback_data="book")],
+                [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
+                [InlineKeyboardButton(t("btn_back",        lang), callback_data="menu")],
+            ])
+        else:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ])
+    elif left <= 0:
         # Just used the last allowed question — proactively invite to book a
         # consultation instead of waiting for them to hit the wall next time.
         kb = offer_book_kb(lang)
