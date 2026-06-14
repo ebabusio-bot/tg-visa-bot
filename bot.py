@@ -978,14 +978,10 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 t("unknown_quiz", lang), reply_markup=main_menu_kb(lang),
             )
             return
-        ctx.user_data[S_MODE] = "checklist"
-        ctx.user_data["checklist_kind"] = kind
-        await q.edit_message_text(
-            t("checklist_contact_prompt", lang), parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t("btn_back", lang), callback_data="checklist")],
-            ]),
-        )
+        # Free lead magnet: deliver immediately, no name/contact required.
+        ctx.user_data[S_MODE] = None
+        ctx.user_data.pop("checklist_kind", None)
+        await _deliver_checklist(update, ctx, kind)
         return
 
 async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_yes: bool):
@@ -1128,10 +1124,6 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if mode == "support":
         await _forward_support(update, ctx)
-        return
-
-    if mode == "checklist":
-        await _deliver_checklist(update, ctx)
         return
 
     if u.id in UNLIMITED_IDS:
@@ -1310,28 +1302,24 @@ async def _forward_support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     key = "support_sent" if delivered else "support_failed"
     await update.message.reply_text(t(key, lang), reply_markup=main_menu_kb(lang))
 
-async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Lead magnet: capture the user's contact, forward it to the admin as a
-    lead, then deliver the requested visa document checklist."""
+async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE, kind: str):
+    """Free lead magnet: deliver the requested visa document checklist
+    immediately — no name/contact required. Notify the admin for analytics."""
     import prompts as _p
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
     lang = user_lang(u.id)
-    kind = ctx.user_data.get("checklist_kind", "eb1a")
-    contact = (update.message.text or "").strip()
 
-    db.save_lead(u.id, u.username, f"Чеклист {kind.upper()}: {contact}", f"checklist:{kind}")
-    db.log_event(u.id, "lead", f"checklist:{kind}")
+    db.log_event(u.id, "checklist", kind)
     try:
         await broadcast_admin(ctx.bot,
-            f"🎁 *Заявка на чеклист* — {md_esc(kind.upper())}\n\n"
+            f"🎁 *Скачан чеклист* — {md_esc(kind.upper())}\n\n"
             f"От: {fmt_user_md(u)}\n"
-            f"Язык: {md_esc(lang_badge(lang))}\n"
-            f"Контакт: {md_esc(contact)}",
+            f"Язык: {md_esc(lang_badge(lang))}",
             parse_mode=ParseMode.MARKDOWN,
         )
     except Exception as e:
-        log.warning("checklist lead notify failed: %s", e)
+        log.warning("checklist notify failed: %s", e)
 
     checklist_ru = _p.CHECKLISTS.get(kind, _p.CHECKLIST_EB1A)
     if lang != "ru":
@@ -1343,10 +1331,9 @@ async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         checklist_txt = checklist_ru
 
-    ctx.user_data[S_MODE] = None
-    ctx.user_data.pop("checklist_kind", None)
-    await update.message.reply_text(t("checklist_sent", lang), parse_mode=ParseMode.MARKDOWN)
-    await safe_send(ctx.bot, update.effective_chat.id, checklist_txt,
+    chat_id = update.effective_chat.id
+    await safe_send(ctx.bot, chat_id, t("checklist_sent", lang), parse_mode=ParseMode.MARKDOWN)
+    await safe_send(ctx.bot, chat_id, checklist_txt,
                     parse_mode=ParseMode.MARKDOWN, reply_markup=offer_book_kb(lang))
 
 async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
