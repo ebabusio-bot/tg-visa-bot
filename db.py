@@ -80,6 +80,13 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_usage_time ON usage(created_at);
+        CREATE TABLE IF NOT EXISTS admin_relay (
+            admin_chat_id INTEGER,
+            message_id INTEGER,
+            client_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (admin_chat_id, message_id)
+        );
         """)
         # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -271,6 +278,25 @@ def usage_totals(days: int | None = None) -> dict:
         "cost_usd": row["cost_usd"],
         "months": [dict(m) for m in months],
     }
+
+# ── Admin→client reply relay ──────────────────────────────────────────────
+def save_relay(admin_chat_id: int, message_id: int, client_id: int):
+    """Remember that the admin-chat message `message_id` is about `client_id`,
+    so when the admin replies to it we know whom to relay the answer to."""
+    with _conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO admin_relay(admin_chat_id, message_id, client_id) "
+            "VALUES(?,?,?)",
+            (admin_chat_id, message_id, client_id),
+        )
+
+def get_relay_client(admin_chat_id: int, message_id: int) -> int | None:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT client_id FROM admin_relay WHERE admin_chat_id=? AND message_id=?",
+            (admin_chat_id, message_id),
+        ).fetchone()
+        return row["client_id"] if row else None
 
 def cost_this_month() -> float:
     """Total AI cost (USD) for the current calendar month."""

@@ -125,30 +125,84 @@ async def safe_send(bot, chat_id: int, text: str, **kwargs):
         kwargs.pop("parse_mode", None)
         return await bot.send_message(chat_id, text, **kwargs)
 
-async def broadcast_admin(bot, text: str, **kwargs):
+# Header shown to the client when an admin replies through the bot.
+SPECIALIST_HEADER = {
+    "ru": "💬 *Сообщение от специалиста:*",
+    "uk": "💬 *Повідомлення від фахівця:*",
+    "en": "💬 *Message from a specialist:*",
+    "es": "💬 *Mensaje de un especialista:*",
+}
+
+async def broadcast_admin(bot, text: str, client_id: int | None = None, **kwargs):
     """Send the same notification to every configured admin.
-    One failing admin (e.g. blocked the bot) never blocks the others."""
+    One failing admin (e.g. blocked the bot) never blocks the others.
+    When `client_id` is given, remember each sent message so an admin can reply
+    to it and have the answer relayed back to that client."""
     for aid in ADMIN_CHAT_IDS:
         try:
-            await safe_send(bot, aid, text, **kwargs)
+            msg = await safe_send(bot, aid, text, **kwargs)
+            if client_id is not None and msg is not None:
+                db.save_relay(aid, msg.message_id, client_id)
         except Exception as e:
             log.warning("admin broadcast to %s failed: %s", aid, e)
 
-async def forward_to_admins(bot, from_chat_id: int, message_id: int):
+async def forward_to_admins(bot, from_chat_id: int, message_id: int,
+                            client_id: int | None = None):
     """Forward a user's message to every admin. Raises only if it could not be
-    delivered to a single admin, so callers can still detect total failure."""
+    delivered to a single admin, so callers can still detect total failure.
+    When `client_id` is given, the forwarded messages become reply anchors for
+    relaying answers back to that client."""
     ok = False
     last_err = None
     for aid in ADMIN_CHAT_IDS:
         try:
-            await bot.forward_message(chat_id=aid, from_chat_id=from_chat_id,
-                                      message_id=message_id)
+            msg = await bot.forward_message(chat_id=aid, from_chat_id=from_chat_id,
+                                            message_id=message_id)
             ok = True
+            if client_id is not None and msg is not None:
+                db.save_relay(aid, msg.message_id, client_id)
         except Exception as e:
             last_err = e
             log.warning("forward to admin %s failed: %s", aid, e)
     if not ok and last_err is not None:
         raise last_err
+
+async def _relay_to_client(ctx, client_id: int, msg) -> bool:
+    """Send an admin's reply to the client from the bot. Text is sent with a
+    'message from a specialist' header; non-text is copied as-is. Returns
+    True on success (False if the client blocked the bot, etc.)."""
+    lang = user_lang(client_id)
+    header = SPECIALIST_HEADER.get(lang, SPECIALIST_HEADER["en"])
+    try:
+        if msg.text:
+            await safe_send(ctx.bot, client_id, f"{header}\n\n{msg.text}",
+                            parse_mode=ParseMode.MARKDOWN)
+        else:
+            await safe_send(ctx.bot, client_id, header, parse_mode=ParseMode.MARKDOWN)
+            await ctx.bot.copy_message(chat_id=client_id, from_chat_id=msg.chat_id,
+                                       message_id=msg.message_id)
+        return True
+    except Exception as e:
+        log.warning("relay to client %s failed: %s", client_id, e)
+        return False
+
+async def _maybe_relay_admin_reply(update: Update, ctx) -> bool:
+    """If an admin replied (Telegram reply) to a client-notification message,
+    relay their message to that client. Returns True if it was handled."""
+    if not _is_admin(update):
+        return False
+    rep = update.message.reply_to_message
+    if not rep:
+        return False
+    client_id = db.get_relay_client(update.effective_chat.id, rep.message_id)
+    if not client_id:
+        return False
+    ok = await _relay_to_client(ctx, client_id, update.message)
+    await update.message.reply_text(
+        f"✅ Отправлено клиенту (id {client_id})." if ok
+        else "❌ Не удалось отправить — клиент мог заблокировать бота."
+    )
+    return True
 
 def user_lang(user_id: int) -> str:
     """Return saved language code for user, or DEFAULT_LANG ('ru') if not set."""
@@ -211,7 +265,7 @@ async def notify_admin_activity(bot, user, label: str, lang: str | None = None,
             f"👆 {mention} ({uname_html}, id {id_link})\n"
             f"{html.escape(label)}{lang_tag}"
         )
-        await broadcast_admin(bot, text, parse_mode=ParseMode.HTML,
+        await broadcast_admin(bot, text, client_id=user.id, parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True)
         log.info("admin activity notify sent: user=%s label=%s", user.id, label)
     except Exception as e:
@@ -228,11 +282,11 @@ async def notify_admin_conversation(bot, user, user_msg: str, bot_answer: str, l
             f"💬 *Диалог* · {fmt_user_md(user)} · {md_esc(lang_badge(lang))}\n\n"
             f"*👤 Вопрос пользователя:*\n{md_esc(user_msg)}"
         )
-        await broadcast_admin(bot, header, parse_mode=ParseMode.MARKDOWN,
+        await broadcast_admin(bot, header, client_id=user.id, parse_mode=ParseMode.MARKDOWN,
                         disable_web_page_preview=True)
         answer_body = "🤖 *Ответ бота:*\n\n" + bot_answer
         for part in split_for_telegram(answer_body):
-            await broadcast_admin(bot, part, parse_mode=ParseMode.MARKDOWN,
+            await broadcast_admin(bot, part, client_id=user.id, parse_mode=ParseMode.MARKDOWN,
                             disable_web_page_preview=True)
         log.info("admin conversation notify sent: user=%s q_chars=%d a_chars=%d",
                  user.id, len(user_msg), len(bot_answer))
@@ -575,6 +629,37 @@ async def cmd_costs(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
     await update.message.reply_text(_format_costs(), parse_mode=ParseMode.MARKDOWN)
+
+async def cmd_reply(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: send a message to a client from the bot.
+    Usage: /reply <tg_id> <text>. Easier: just reply to the client's
+    notification message in this chat."""
+    if not _is_admin(update):
+        return
+    parts = update.message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await update.message.reply_text(
+            "Использование: /reply <id> <текст>\n"
+            "Проще: ответьте (reply) на сообщение о клиенте в этом чате — "
+            "и просто напишите ответ."
+        )
+        return
+    try:
+        client_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("ID должен быть числом. Возьмите его из уведомления о клиенте.")
+        return
+    lang = user_lang(client_id)
+    header = SPECIALIST_HEADER.get(lang, SPECIALIST_HEADER["en"])
+    try:
+        await safe_send(ctx.bot, client_id, f"{header}\n\n{parts[2]}",
+                        parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(f"✅ Отправлено клиенту (id {client_id}).")
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Не удалось отправить: {type(e).__name__}. "
+            "Клиент мог не писать боту или заблокировать его."
+        )
 
 KIND_NAMES = {"eb1a": "EB-1A", "niw": "EB-2 NIW", "o1": "O-1", "e2": "E-2"}
 
@@ -965,7 +1050,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
         f"{md_esc(detail)}"
     )
     try:
-        await broadcast_admin(ctx.bot, admin_txt, parse_mode=ParseMode.MARKDOWN)
+        await broadcast_admin(ctx.bot, admin_txt, client_id=u.id, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         log.warning("admin notify failed: %s", e)
     db.save_lead(u.id, u.username, f"{kind}: {sum(ans)}/{cfg['total']}", "quiz")
@@ -978,6 +1063,10 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
+
+    # Admin replying (Telegram reply) to a client notification → relay to client.
+    if await _maybe_relay_admin_reply(update, ctx):
+        return
 
     saved_lang = db.get_user_lang(u.id)
     if saved_lang not in i18n.LANG_CODES:
@@ -1009,7 +1098,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"{md_esc(text)}"
         )
         try:
-            await broadcast_admin(ctx.bot, admin_txt, parse_mode=ParseMode.MARKDOWN)
+            await broadcast_admin(ctx.bot, admin_txt, client_id=u.id, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             log.warning("admin notify failed: %s", e)
         await update.message.reply_text(t("lead_received", lang), reply_markup=main_menu_kb(lang))
@@ -1102,7 +1191,7 @@ async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, k
 
     forwarded = True
     try:
-        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id, client_id=update.effective_user.id)
     except Exception as e:
         forwarded = False
         log.warning("forward failed: %s", e)
@@ -1134,7 +1223,7 @@ async def _forward_support(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"_Сообщение пользователя ниже:_",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id, client_id=update.effective_user.id)
     except Exception as e:
         delivered = False
         log.warning("support forward failed: %s", e)
@@ -1204,7 +1293,7 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
 
     forwarded = True
     try:
-        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id)
+        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id, client_id=update.effective_user.id)
     except Exception as e:
         forwarded = False
         log.warning("forward failed: %s", e)
@@ -1217,6 +1306,11 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
 async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle non-text messages (documents/photos/voice/video/audio)."""
     u = update.effective_user
+
+    # Admin replying with a file/photo to a client notification → relay it.
+    if await _maybe_relay_admin_reply(update, ctx):
+        return
+
     saved_lang = db.get_user_lang(u.id)
     if saved_lang not in i18n.LANG_CODES:
         await update.message.reply_text(
@@ -1293,6 +1387,7 @@ def main():
     app.add_handler(CommandHandler("leads",   cmd_leads))
     app.add_handler(CommandHandler("stats",   cmd_stats))
     app.add_handler(CommandHandler("costs",   cmd_costs))
+    app.add_handler(CommandHandler("reply",   cmd_reply))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(
