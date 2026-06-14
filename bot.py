@@ -222,6 +222,7 @@ CLICK_LABELS = {
     "case_review": "🆓 Бесплатный разбор ситуации",
     "pricing":     "💰 Стоимость и сроки",
     "book":        "📞 Записаться на консультацию",
+    "contact_human": "👤 Связаться с человеком",
     "case_done":   "✅ Завершить отправку (case review)",
     "support":     "🛠 Обратиться в техподдержку",
     "checklist":   "🎁 Бесплатный чеклист документов",
@@ -321,6 +322,7 @@ def main_menu_kb(lang: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(t("btn_case_review", lang), callback_data="case_review")],
         [InlineKeyboardButton(t("btn_pricing", lang),     callback_data="pricing")],
         [InlineKeyboardButton(t("btn_book", lang),        callback_data="book")],
+        [InlineKeyboardButton(t("btn_contact_human", lang), callback_data="contact_human")],
         [InlineKeyboardButton(t("btn_support", lang),     callback_data="support")],
         [InlineKeyboardButton(t("btn_lang", lang),        callback_data="lang")],
     ])
@@ -364,6 +366,7 @@ def offer_book_kb(lang: str) -> InlineKeyboardMarkup:
     daily question limit is reached."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+        [InlineKeyboardButton(t("btn_contact_human", lang), callback_data="contact_human")],
         [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
     ])
 
@@ -880,10 +883,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await handle_quiz_answer(update, ctx, data == "q:yes")
         return
 
-    if data == "book":
-        ctx.user_data[S_MODE] = "lead"
+    if data in ("book", "contact_human"):
+        # Connect a live human: the client's next messages go to the admin(s),
+        # who reply from the bot. Persists until the client returns to the menu.
+        ctx.user_data[S_MODE] = "human"
+        ctx.user_data["human_started"] = False
         await q.edit_message_text(
-            t("lead_prompt", lang), parse_mode=ParseMode.MARKDOWN,
+            t("human_prompt", lang), parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
             ]),
@@ -1088,6 +1094,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if mode == "human":
+        await _forward_human(update, ctx)
+        return
+
     if mode == "lead":
         db.save_lead(u.id, u.username, text, "booking")
         ctx.user_data[S_MODE] = None
@@ -1169,6 +1179,46 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # Forward the Q&A pair to admin so she can see what clients are told.
     await notify_admin_conversation(ctx.bot, u, text, answer, lang)
+
+async def _forward_human(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Live human mode: forward the client's message to all admins (who reply
+    from the bot). The first message posts a header and acks the client; later
+    messages flow silently so it reads like a real chat."""
+    u = update.effective_user
+    db.upsert_user(u.id, u.username, u.first_name)
+    lang = user_lang(u.id)
+    first = not ctx.user_data.get("human_started")
+    if first:
+        ctx.user_data["human_started"] = True
+        db.save_lead(u.id, u.username, "Запрос на связь со специалистом (живой чат)", "human")
+        try:
+            db.log_event(u.id, "human_request")
+        except Exception:
+            pass
+        try:
+            await broadcast_admin(
+                ctx.bot,
+                f"👤 *Клиент на связи (живой чат)*\n\n"
+                f"От: {fmt_user_md(u)}\n"
+                f"Язык: {md_esc(lang_badge(lang))}\n"
+                f"_Сообщения клиента — ниже. Ответьте (reply) на любое из них — "
+                f"ответ уйдёт клиенту от бота._",
+                client_id=u.id, parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            log.warning("human header notify failed: %s", e)
+    try:
+        await forward_to_admins(ctx.bot, update.effective_chat.id,
+                                update.message.message_id, client_id=u.id)
+    except Exception as e:
+        log.warning("human forward failed: %s", e)
+    if first:
+        await update.message.reply_text(
+            t("human_relayed", lang),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+            ]),
+        )
 
 async def _forward_case_review(update: Update, ctx: ContextTypes.DEFAULT_TYPE, kind: str):
     """Forward a user's text/document/photo to the admin during case_review mode."""
@@ -1321,6 +1371,9 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lang = normalize_lang(saved_lang)
 
     mode = ctx.user_data.get(S_MODE)
+    if mode == "human":
+        await _forward_human(update, ctx)
+        return
     if mode == "case_review":
         await _forward_case_review(update, ctx, "attachment")
         return

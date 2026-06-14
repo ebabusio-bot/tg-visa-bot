@@ -88,6 +88,15 @@ T: dict[str, dict[str, object]] = {
         "btn_case_review": "🆓 Бесплатный разбор ситуации",
         "btn_pricing": "💰 Стоимость и сроки",
         "btn_book": "📞 Записаться на консультацию",
+        "btn_contact_human": "👤 Связаться с человеком",
+        "human_prompt": (
+            "✍️ Опишите ваш вопрос одним сообщением — я передам его нашему "
+            "специалисту, и он ответит вам прямо здесь, в этом чате."
+        ),
+        "human_relayed": (
+            "✅ Сообщение передано специалисту. Он ответит вам здесь — можете "
+            "написать ещё или прислать документы."
+        ),
         "btn_back": "⬅️ В меню",
         "btn_checklist": "🎁 Бесплатный чеклист документов",
         "checklist_select": (
@@ -313,6 +322,15 @@ T: dict[str, dict[str, object]] = {
         "btn_case_review": "🆓 Безкоштовний розбір ситуації",
         "btn_pricing": "💰 Вартість і терміни",
         "btn_book": "📞 Записатися на консультацію",
+        "btn_contact_human": "👤 Зв'язатися з фахівцем",
+        "human_prompt": (
+            "✍️ Опишіть ваше запитання одним повідомленням — я передам його "
+            "нашому фахівцю, і він відповість вам просто тут, у цьому чаті."
+        ),
+        "human_relayed": (
+            "✅ Повідомлення передано фахівцю. Він відповість вам тут — можете "
+            "написати ще або надіслати документи."
+        ),
         "btn_back": "⬅️ До меню",
         "btn_checklist": "🎁 Безкоштовний чеклист документів",
         "checklist_select": (
@@ -548,6 +566,15 @@ T: dict[str, dict[str, object]] = {
         "btn_case_review": "🆓 Free case review",
         "btn_pricing": "💰 Pricing & timelines",
         "btn_book": "📞 Book a consultation",
+        "btn_contact_human": "👤 Talk to a specialist",
+        "human_prompt": (
+            "✍️ Describe your question in one message — I'll pass it to our "
+            "specialist, who will reply to you right here in this chat."
+        ),
+        "human_relayed": (
+            "✅ Your message has been sent to a specialist. They'll reply here — "
+            "feel free to add more or attach documents."
+        ),
         "btn_back": "⬅️ Back to menu",
         "btn_checklist": "🎁 Free document checklist",
         "checklist_select": (
@@ -771,6 +798,15 @@ T: dict[str, dict[str, object]] = {
         "btn_case_review": "🆓 Revisión gratuita del caso",
         "btn_pricing": "💰 Precios y plazos",
         "btn_book": "📞 Reservar consulta",
+        "btn_contact_human": "👤 Hablar con un especialista",
+        "human_prompt": (
+            "✍️ Describa su consulta en un mensaje — la enviaré a nuestro "
+            "especialista, que le responderá aquí mismo, en este chat."
+        ),
+        "human_relayed": (
+            "✅ Su mensaje fue enviado a un especialista. Le responderá aquí — "
+            "puede escribir más o adjuntar documentos."
+        ),
         "btn_back": "⬅️ Al menú",
         "btn_checklist": "🎁 Lista de documentos gratis",
         "checklist_select": (
