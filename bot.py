@@ -1071,6 +1071,10 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
 # ────────────────────────────────────────────────────────────── messages
 
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    # Ignore edited messages / anything without fresh text: for an edited
+    # message Telegram leaves update.message = None, which would crash below.
+    if update.message is None or update.message.text is None:
+        return
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
 
@@ -1367,6 +1371,8 @@ async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_
 
 async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle non-text messages (documents/photos/voice/video/audio)."""
+    if update.message is None:  # e.g. an edited media message — nothing fresh to handle
+        return
     u = update.effective_user
 
     # Admin replying with a file/photo to a client notification → relay it.
