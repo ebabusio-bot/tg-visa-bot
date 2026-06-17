@@ -95,6 +95,10 @@ def init_db():
             last_checked TEXT,
             last_changed TEXT
         );
+        CREATE TABLE IF NOT EXISTS monitor_seen_docs (
+            doc_id TEXT PRIMARY KEY,        -- Federal Register document number
+            created_at TEXT DEFAULT (datetime('now'))
+        );
         """)
         # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -598,3 +602,20 @@ def list_monitor_snapshots() -> list[dict]:
             "FROM monitor_snapshots ORDER BY source_key"
         ).fetchall()
     return [dict(r) for r in rows]
+
+def monitor_seen_count() -> int:
+    """How many Federal Register docs we've already recorded (0 == first run)."""
+    with _conn() as c:
+        return c.execute("SELECT COUNT(*) FROM monitor_seen_docs").fetchone()[0]
+
+def has_doc_seen(doc_id: str) -> bool:
+    with _conn() as c:
+        return c.execute(
+            "SELECT 1 FROM monitor_seen_docs WHERE doc_id=?", (doc_id,)
+        ).fetchone() is not None
+
+def mark_doc_seen(doc_id: str):
+    with _conn() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO monitor_seen_docs(doc_id) VALUES(?)", (doc_id,)
+        )

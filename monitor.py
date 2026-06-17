@@ -1,15 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Daily monitoring of official USCIS / US State Department pages.
+"""Daily monitoring of official US immigration sources.
 
-For each watched page we fetch the HTML, reduce it to normalized visible text,
-and compare against the last stored snapshot. When the text changes we ask the
-LLM whether the change is *substantive* for applicants (document requirements,
-criteria, timelines, fees, procedure) — cosmetic churn (nav, layout, page-update
-dates) is filtered out so the admin only hears about real changes.
+Two channels, because the sources behave differently:
 
-Snapshots live in the `monitor_snapshots` table (see db.py). The daily job and
-the /checkupdates admin command both call check_all().
+1. Federal Register API (federalregister.gov) — the US government's official
+   journal where USCIS / DHS / State publish every rule, fee change, form
+   revision and policy notice. This is the authoritative source for "changing
+   requirements / approaches / timelines / fees". We track seen document
+   numbers and alert on new ones relevant to the bot's visa categories.
+   (USCIS's own website is behind Akamai bot protection and returns 403 to
+   servers, so we rely on the Federal Register instead — it carries the actual
+   rule changes anyway.)
+
+2. State Dept Visa Bulletin (travel.state.gov) — a normal page we can fetch.
+   We snapshot its visible text and diff it; the LLM reports substantive
+   movement in priority dates.
+
+Both feed check_all(), used by the daily job and the /checkupdates command.
 """
+import datetime as _dt
 import difflib
 import hashlib
 import html as _html
@@ -23,36 +32,113 @@ import llm
 
 log = logging.getLogger("monitor")
 
-# Watched official sources — stable, server-rendered pages. Keep this list
-# aligned with the visa categories the bot supports.
-SOURCES = [
-    {"key": "uscis_eb1", "category": "EB-1",
-     "name": "USCIS — EB-1 (Extraordinary Ability и др.)",
-     "url": "https://www.uscis.gov/working-in-the-united-states/permanent-workers/employment-based-immigration-first-preference-eb-1"},
-    {"key": "uscis_eb2", "category": "EB-2 / NIW",
-     "name": "USCIS — EB-2 (включая NIW)",
-     "url": "https://www.uscis.gov/working-in-the-united-states/permanent-workers/employment-based-immigration-second-preference-eb-2"},
-    {"key": "uscis_eb3", "category": "EB-3",
-     "name": "USCIS — EB-3 (Skilled / Professional / Other)",
-     "url": "https://www.uscis.gov/working-in-the-united-states/permanent-workers/employment-based-immigration-third-preference-eb-3"},
-    {"key": "uscis_o1", "category": "O-1",
-     "name": "USCIS — O-1 (Extraordinary Ability)",
-     "url": "https://www.uscis.gov/working-in-the-united-states/temporary-workers/o-1-individuals-with-extraordinary-ability-or-achievement"},
-    {"key": "uscis_e2", "category": "E-2",
-     "name": "USCIS — E-2 Treaty Investors",
-     "url": "https://www.uscis.gov/working-in-the-united-states/temporary-workers/e-2-treaty-investors"},
-    {"key": "uscis_asylum", "category": "Asylum",
-     "name": "USCIS — Asylum (убежище)",
-     "url": "https://www.uscis.gov/humanitarian/refugees-and-asylum/asylum"},
-    {"key": "uscis_premium", "category": "Premium Processing",
-     "name": "USCIS — Premium Processing (I-907)",
-     "url": "https://www.uscis.gov/forms/all-forms/how-do-i-request-premium-processing"},
+_UA = "Mozilla/5.0 (compatible; SunnyFlBot/1.0; +https://t.me/SunnyFl_bot)"
+
+# ─────────────────────────────────────────────── Federal Register channel
+
+_FEDREG_URL = "https://www.federalregister.gov/api/v1/documents.json"
+
+# Agencies whose immigration rules matter to this bot.
+_FEDREG_AGENCIES = [
+    ("u-s-citizenship-and-immigration-services", "USCIS"),
+    ("homeland-security-department", "DHS"),
+    ("state-department", "Госдеп"),
+]
+
+# A doc is relevant if its title or abstract mentions any of these (lowercased).
+_FEDREG_KEYWORDS = (
+    "eb-1", "eb1", "eb-2", "eb2", "eb-3", "eb3", "o-1", "e-2", "treaty investor",
+    "asylum", "employment-based", "employment based", "immigrant visa",
+    "premium processing", "i-140", "i-485", "i-129", "i-907", "i-589",
+    "labor certification", "priority date", "national interest",
+    "extraordinary ability", "visa bulletin", "adjustment of status",
+    "filing fee", "fee schedule", "fee rule", "form i-", "perm",
+)
+
+_FEDREG_LOOKBACK_DAYS = 45
+
+
+def _today() -> _dt.date:
+    return _dt.datetime.now(_dt.timezone.utc).date()
+
+
+def _relevant(doc: dict) -> bool:
+    blob = ((doc.get("title") or "") + " " + (doc.get("abstract") or "")).lower()
+    return any(k in blob for k in _FEDREG_KEYWORDS)
+
+
+async def _fedreg_fetch(agency_slug: str) -> list[dict]:
+    since = (_today() - _dt.timedelta(days=_FEDREG_LOOKBACK_DAYS)).isoformat()
+    params = {
+        "conditions[agencies][]": agency_slug,
+        "conditions[publication_date][gte]": since,
+        "order": "newest",
+        "per_page": 50,
+        "fields[]": ["document_number", "title", "abstract", "type",
+                     "html_url", "publication_date"],
+    }
+    async with httpx.AsyncClient(timeout=30, headers={"User-Agent": _UA}) as c:
+        r = await c.get(_FEDREG_URL, params=params)
+    if r.status_code != 200:
+        log.warning("fedreg %s -> HTTP %s", agency_slug, r.status_code)
+        return []
+    return r.json().get("results", []) or []
+
+
+async def check_federal_register() -> dict:
+    """Return {'status', 'new': [docs]}. On the very first run we silently
+    establish a baseline (mark everything seen, alert on nothing)."""
+    baseline = db.monitor_seen_count() == 0
+    new_docs: list[dict] = []
+    any_fetch = False
+    for slug, short in _FEDREG_AGENCIES:
+        try:
+            docs = await _fedreg_fetch(slug)
+            any_fetch = True
+        except Exception as e:
+            log.warning("fedreg fetch %s failed: %s", slug, e)
+            continue
+        for doc in docs:
+            if not _relevant(doc):
+                continue
+            did = doc.get("document_number")
+            if not did or db.has_doc_seen(did):
+                continue
+            db.mark_doc_seen(did)
+            if not baseline:
+                doc["_agency"] = short
+                new_docs.append(doc)
+
+    if not any_fetch:
+        return {"status": "error", "new": []}
+
+    # Summarize each new doc in Russian (rare event → cheap).
+    out = []
+    for doc in new_docs:
+        summary = None
+        try:
+            summary = await llm.summarize_rule(
+                doc.get("title", ""), doc.get("abstract", "") or "")
+        except Exception as e:
+            log.warning("fedreg summarize failed: %s", e)
+        out.append({
+            "name": f"Federal Register · {doc.get('_agency','')} · {doc.get('type','')}",
+            "title": doc.get("title", ""),
+            "date": doc.get("publication_date", ""),
+            "summary": summary or (doc.get("abstract") or doc.get("title") or ""),
+            "url": doc.get("html_url", ""),
+        })
+    status = "baseline" if baseline else ("new" if out else "unchanged")
+    return {"status": status, "new": out}
+
+
+# ─────────────────────────────────────────────── HTML-scrape channel (Visa Bulletin)
+
+HTML_SOURCES = [
     {"key": "dos_visa_bulletin", "category": "Visa Bulletin",
      "name": "Госдеп США — Visa Bulletin",
      "url": "https://travel.state.gov/content/travel/en/legal/visa-law0/visa-bulletin.html"},
 ]
-
-_UA = "Mozilla/5.0 (compatible; SunnyFlBot/1.0; +https://t.me/SunnyFl_bot)"
 
 _DROP_BLOCKS = re.compile(r"(?is)<(script|style|noscript|svg|head)[^>]*>.*?</\1>")
 _TAGS = re.compile(r"(?s)<[^>]+>")
@@ -60,14 +146,13 @@ _INLINE_WS = re.compile(r"[ \t\r\f\v]+")
 
 
 def _normalize(raw: str) -> str:
-    """Reduce HTML to normalized visible text for stable diffing."""
     t = _DROP_BLOCKS.sub(" ", raw)
     t = _TAGS.sub("\n", t)
     t = _html.unescape(t)
     lines = []
     for ln in t.splitlines():
         ln = _INLINE_WS.sub(" ", ln).strip()
-        if len(ln) > 2:           # drop empty / single-char nav noise
+        if len(ln) > 2:
             lines.append(ln)
     return "\n".join(lines).strip()
 
@@ -88,71 +173,61 @@ async def _fetch(url: str) -> str | None:
 
 
 def _diff(old: str, new: str, max_chars: int = 6000) -> str:
-    """Unified diff reduced to just the changed (+/-) lines, capped in size."""
-    raw = difflib.unified_diff(
-        old.splitlines(), new.splitlines(), lineterm="", n=0
-    )
-    changed = [
-        ln for ln in raw
-        if ln and ln[0] in "+-" and not ln.startswith(("+++", "---"))
-    ]
+    raw = difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="", n=0)
+    changed = [ln for ln in raw
+               if ln and ln[0] in "+-" and not ln.startswith(("+++", "---"))]
     return "\n".join(changed)[:max_chars]
 
 
-def _meta(src: dict) -> dict:
-    return {"key": src["key"], "name": src["name"],
-            "url": src["url"], "category": src["category"]}
-
-
-async def check_source(src: dict) -> dict:
-    """Fetch one source and classify the result.
-
-    status is one of: 'new' (baseline stored), 'unchanged', 'cosmetic'
-    (text changed but no applicant impact), 'changed' (substantive — `summary`
-    is set), or 'error' (fetch/parse failed)."""
+async def check_html_source(src: dict) -> dict:
+    """status: 'new' | 'unchanged' | 'cosmetic' | 'changed' | 'error'."""
     raw = await _fetch(src["url"])
     if raw is None:
-        return {**_meta(src), "status": "error", "summary": None}
+        return {"status": "error", "summary": None}
     text = _normalize(raw)
     if len(text) < 200:
-        # Block page or JS shell — don't overwrite a good baseline with junk.
-        log.warning("monitor %s: suspiciously short text (%d chars)",
-                    src["key"], len(text))
-        return {**_meta(src), "status": "error", "summary": None}
-
+        return {"status": "error", "summary": None}
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
     prev = db.get_monitor_snapshot(src["key"])
-
     if prev is None:
         db.save_monitor_snapshot(src["key"], src["url"], h, text, changed=False)
-        return {**_meta(src), "status": "new", "summary": None}
-
+        return {"status": "new", "summary": None}
     if prev["content_hash"] == h:
         db.save_monitor_snapshot(src["key"], src["url"], h, text, changed=False)
-        return {**_meta(src), "status": "unchanged", "summary": None}
-
-    # Text changed — let the LLM decide whether it matters to applicants.
+        return {"status": "unchanged", "summary": None}
     diff_text = _diff(prev["content_text"] or "", text)
     summary = None
     if diff_text.strip():
         try:
-            summary = await llm.summarize_change(
-                src["name"], src["category"], diff_text)
+            summary = await llm.summarize_change(src["name"], src["category"], diff_text)
         except Exception as e:
             log.warning("monitor summarize failed for %s: %s", src["key"], e)
     substantive = summary is not None
     db.save_monitor_snapshot(src["key"], src["url"], h, text, changed=substantive)
-    return {
-        **_meta(src),
-        "status": "changed" if substantive else "cosmetic",
-        "summary": summary,
-    }
+    return {"status": "changed" if substantive else "cosmetic", "summary": summary}
 
 
-async def check_all() -> list[dict]:
-    """Check every source sequentially (gentle on the servers). Returns the
-    per-source result dicts."""
-    results = []
-    for src in SOURCES:
-        results.append(await check_source(src))
-    return results
+# ─────────────────────────────────────────────────────────────── orchestrator
+
+async def check_all() -> dict:
+    """Run both channels. Returns:
+      {'alerts': [{name, summary, url}], 'report': [{name, status}]}.
+    `alerts` is what gets pushed to admins; `report` is the status table."""
+    alerts: list[dict] = []
+    report: list[dict] = []
+
+    for src in HTML_SOURCES:
+        r = await check_html_source(src)
+        report.append({"name": src["name"], "status": r["status"]})
+        if r["status"] == "changed" and r["summary"]:
+            alerts.append({"name": src["name"], "summary": r["summary"], "url": src["url"]})
+
+    fr = await check_federal_register()
+    report.append({"name": "Federal Register (USCIS / DHS / Госдеп)", "status": fr["status"]})
+    for d in fr["new"]:
+        summary = d["summary"]
+        if d.get("title"):
+            summary = f"{d['title']}\n\n{summary}"
+        alerts.append({"name": d["name"], "summary": summary, "url": d["url"]})
+
+    return {"alerts": alerts, "report": report}

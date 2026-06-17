@@ -792,72 +792,74 @@ async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
         log.warning("daily summary FAILED: %s", e)
 
 
-async def _notify_official_changes(bot, results: list[dict]):
-    """Send one plain-text alert per substantively-changed official source.
-    Plain text (no Markdown) so an LLM summary can't break Telegram parsing."""
-    changed = [r for r in results if r["status"] == "changed" and r["summary"]]
-    for r in changed:
+async def _push_official_alerts(bot, alerts: list[dict]):
+    """Send one plain-text alert per official change. Plain text (no Markdown)
+    so an LLM/government summary can't break Telegram parsing."""
+    for a in alerts:
         text = (
-            f"📢 Изменение на официальном сайте\n"
-            f"{r['name']}\n\n"
-            f"{r['summary']}\n\n"
-            f"Источник: {r['url']}"
+            f"📢 Официальное обновление\n"
+            f"{a['name']}\n\n"
+            f"{a['summary']}\n\n"
+            f"Источник: {a['url']}"
         )
         try:
             await broadcast_admin(bot, text, disable_web_page_preview=True)
         except Exception as e:
             log.warning("official-change notify failed: %s", e)
-    return changed
 
 async def job_check_official_updates(ctx: ContextTypes.DEFAULT_TYPE):
-    """Daily: re-check official USCIS / State Dept pages and alert admins about
+    """Daily: re-check Federal Register + Visa Bulletin and alert admins about
     substantive changes only. Silent when nothing meaningful changed."""
     try:
-        results = await monitor.check_all()
+        res = await monitor.check_all()
     except Exception as e:
         log.warning("monitor check_all failed: %s", e)
         return
-    changed = await _notify_official_changes(ctx.bot, results)
-    errors = [r for r in results if r["status"] == "error"]
-    log.info("monitor daily: %d sources, %d changed, %d errors",
-             len(results), len(changed), len(errors))
+    await _push_official_alerts(ctx.bot, res["alerts"])
+    log.info("monitor daily: %d alerts; report=%s",
+             len(res["alerts"]), {r["name"]: r["status"] for r in res["report"]})
 
 async def cmd_checkupdates(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Admin-only: run the official-source check now and report the outcome."""
     if not _is_admin(update):
         return
-    await update.message.reply_text("🔎 Проверяю официальные источники USCIS/Госдепа… (10–30 сек)")
+    await update.message.reply_text(
+        "🔎 Проверяю Federal Register и Visa Bulletin… (10–40 сек)")
     try:
-        results = await monitor.check_all()
+        res = await monitor.check_all()
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка проверки: {type(e).__name__}: {e}")
         return
-    changed = await _notify_official_changes(ctx.bot, results)
-    icon = {"new": "🆕 база создана", "unchanged": "✓ без изменений",
-            "cosmetic": "≈ косметика", "changed": "📢 изменение", "error": "⚠️ ошибка"}
-    lines = ["Результат проверки источников:\n"]
-    for r in results:
+    await _push_official_alerts(ctx.bot, res["alerts"])
+    icon = {"new": "📢 есть новое", "baseline": "🆕 база создана",
+            "unchanged": "✓ без изменений", "cosmetic": "≈ косметика",
+            "changed": "📢 изменение", "error": "⚠️ ошибка"}
+    lines = ["Результат проверки:\n"]
+    for r in res["report"]:
         lines.append(f"• {r['name']} — {icon.get(r['status'], r['status'])}")
-    if changed:
-        lines.append(f"\nСущественных изменений: {len(changed)} — детали присланы выше.")
-    else:
-        lines.append("\nСущественных изменений не найдено.")
+    n = len(res["alerts"])
+    lines.append(f"\nСущественных обновлений: {n}"
+                 + (" — детали присланы выше." if n else "."))
     await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
 
 async def cmd_sources(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Admin-only: list watched official sources and when each was last checked/changed."""
+    """Admin-only: list watched official sources and last-checked status."""
     if not _is_admin(update):
         return
     snaps = {s["source_key"]: s for s in db.list_monitor_snapshots()}
-    lines = ["📋 Отслеживаемые официальные источники:\n"]
-    for src in monitor.SOURCES:
+    lines = ["📋 Отслеживаемые официальные источники:\n",
+             "Federal Register (USCIS / DHS / Госдеп) — правила, формы, пошлины, политика"]
+    seen = db.monitor_seen_count()
+    lines.append(f"   документов в базе: {seen}"
+                 + ("" if seen else " (база ещё не создана)"))
+    for src in monitor.HTML_SOURCES:
         s = snaps.get(src["key"])
         if s:
             checked = (s["last_checked"] or "—")[:16]
             changed = (s["last_changed"] or "—")[:16]
-            lines.append(f"• {src['name']}\n   проверено: {checked} · посл. изменение: {changed}")
+            lines.append(f"{src['name']}\n   проверено: {checked} · посл. изменение: {changed}")
         else:
-            lines.append(f"• {src['name']}\n   ещё не проверялось")
+            lines.append(f"{src['name']}\n   ещё не проверялось")
     lines.append("\nПроверить сейчас: /checkupdates")
     await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
 

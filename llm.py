@@ -245,3 +245,26 @@ async def summarize_change(source_name: str, category: str, diff_text: str) -> s
     if not out or _NO_CHANGE.lower() in out.lower()[:40]:
         return None
     return out
+
+
+async def summarize_rule(title: str, abstract: str) -> str:
+    """Turn a Federal Register document (title + abstract, in English) into a
+    short Russian summary of what it means for applicants. Used for the daily
+    official-updates alert. Falls back to the English title on failure."""
+    resp = await _get_client().messages.create(
+        model=MODEL,
+        max_tokens=400,
+        system=[{"type": "text", "text": (
+            "Ты — аналитик иммиграционных правил США. Тебе дают заголовок и "
+            "аннотацию официального документа из Federal Register (на английском). "
+            "Кратко (2–4 предложения) объясни на русском, о чём документ и чем он "
+            "важен для заявителей на рабочие/иммиграционные визы (EB-1/EB-2/EB-3, "
+            "O-1, E-2, убежище): меняются ли требования, формы, пошлины, сроки или "
+            "процедура. Без воды. Если документ рутинный (например, продление сбора "
+            "статистики), так и скажи одной фразой."
+        )}],
+        messages=[{"role": "user", "content": f"Title: {title}\n\nAbstract: {abstract}"}],
+    )
+    _record_usage(resp, "monitor", 0)
+    out = "".join(b.text for b in resp.content if b.type == "text").strip()
+    return out or title
