@@ -7,6 +7,7 @@ _SPEC = {
     "niw":  {"intro_key": "quiz_intro_niw",  "q_key": "niw_questions",  "needed": 3, "total": 3},
     "o1":   {"intro_key": "quiz_intro_o1",   "q_key": "o1_questions",   "needed": 3, "total": 8},
     "e2":   {"intro_key": "quiz_intro_e2",   "q_key": "e2_questions",   "needed": 7, "total": 7},
+    "eb3":  {"intro_key": "quiz_intro_eb3",  "q_key": "eb3_questions",  "needed": 5, "total": 5},
 }
 
 # Short Russian labels for each quiz criterion, index-aligned with the question
@@ -48,6 +49,13 @@ _LABELS = {
         "контроль не менее 50% бизнеса",
         "бизнес не marginal (доход/рабочие места)",
         "намерение выехать по окончании статуса",
+    ],
+    "eb3": [
+        "постоянное предложение работы от работодателя США",
+        "готовность работодателя оформить PERM и подать I-140",
+        "соответствие квалификации подкатегории (образование/опыт)",
+        "зарплата не ниже prevailing wage",
+        "отсутствие доступных квалифицированных работников из США",
     ],
 }
 
@@ -186,6 +194,49 @@ def summarize(kind: str, answers: list[bool]) -> tuple[str, bool]:
                 "Обсудим на консультации."
             )
 
+    elif kind == "eb3":
+        qualifies = yes == 5
+        # answers[0] = permanent job offer, answers[1] = employer will sponsor PERM/I-140.
+        # Both together are the hard blocker: EB-3 has no self-petition path.
+        has_offer = answers[0] if answers else False
+        has_sponsor = answers[1] if len(answers) > 1 else False
+        if qualifies:
+            verdict = (
+                "✅ *Все базовые требования EB-3 выполнены.* "
+                "Это хорошая стартовая позиция. Следующие шаги — трудовая сертификация PERM "
+                "(работодатель тестирует рынок труда США) и подача работодателем петиции I-140. "
+                "Учтите, что по EB-3 возможна очередь — её длительность зависит от страны рождения "
+                "и подкатегории (у Other Workers — самая большая). "
+                "Рекомендую консультацию для стратегии кейса и оценки сроков."
+            )
+        elif not (has_offer and has_sponsor):
+            verdict = (
+                "❌ *EB-3 невозможна без работодателя-спонсора.* "
+                "Эта категория строится вокруг постоянного предложения работы и трудовой "
+                "сертификации PERM — самостоятельная подача (self-petition) недоступна.\n\n"
+                f"Выполнено {yes} из 5 требований, но без предложения работы и готовности "
+                "работодателя оформить PERM и I-140 путь EB-3 закрыт.\n\n"
+                "*Возможные альтернативы:*\n"
+                "- *EB-1A* или *EB-2 NIW* — допускают самостоятельную подачу без работодателя "
+                "при сильном профиле.\n"
+                "- *O-1* — временная виза для выдающихся специалистов (нужен петиционер/агент).\n"
+                "Рекомендую консультацию для подбора оптимального пути."
+            )
+        elif yes == 4:
+            verdict = (
+                f"⚠️ *Выполнено {yes} из 5 требований EB-3 — не хватает одного.* "
+                "Часто недостающий элемент можно закрыть (например, подтвердить prevailing wage "
+                "или уточнить соответствие квалификации подкатегории). "
+                "Рекомендую консультацию — наши специалисты разберут, какое именно требование недостаёт."
+            )
+        else:
+            verdict = (
+                f"⚠️ *Выполнено {yes} из 5 требований EB-3.* "
+                "Для подачи нужны все базовые условия. "
+                "Рекомендую консультацию — наши специалисты оценят, какие требования реально закрыть "
+                "и подходит ли EB-3 в вашей ситуации."
+            )
+
     else:  # e2
         qualifies = yes == 7
         # answers[0] = citizenship of treaty country — hard blocker
@@ -234,7 +285,13 @@ def summarize(kind: str, answers: list[bool]) -> tuple[str, bool]:
     # Skipped when the result is perfect, or for the E-2 hard-blocker case
     # (citizenship missing — that verdict already explains the situation).
     total = _SPEC[kind]["total"]
-    show_gaps = yes < total and not (kind == "e2" and not (answers[0] if answers else False))
+    hard_blocked = (
+        (kind == "e2" and not (answers[0] if answers else False))
+        or (kind == "eb3" and not (
+            (answers[0] if answers else False) and (answers[1] if len(answers) > 1 else False)
+        ))
+    )
+    show_gaps = yes < total and not hard_blocked
     if show_gaps:
         gaps = _gaps(kind, answers)
         if gaps:

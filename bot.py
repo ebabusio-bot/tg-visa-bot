@@ -234,10 +234,12 @@ CLICK_LABELS = {
     "checklist:niw":  "Выбрал чеклист: EB-2 NIW",
     "checklist:o1":   "Выбрал чеклист: O-1",
     "checklist:e2":   "Выбрал чеклист: E-2",
+    "checklist:eb3":  "Выбрал чеклист: EB-3",
     "quiz:eb1a":   "Выбрал квиз: EB-1A",
     "quiz:niw":    "Выбрал квиз: EB-2 NIW",
     "quiz:o1":     "Выбрал квиз: O-1",
     "quiz:e2":     "Выбрал квиз: E-2",
+    "quiz:eb3":    "Выбрал квиз: EB-3",
     "lang":        "🌐 Сменить язык",
 }
 
@@ -337,6 +339,7 @@ def checklist_select_kb(lang: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(t("btn_quiz_niw",  lang), callback_data="checklist:niw")],
         [InlineKeyboardButton(t("btn_quiz_o1",   lang), callback_data="checklist:o1")],
         [InlineKeyboardButton(t("btn_quiz_e2",   lang), callback_data="checklist:e2")],
+        [InlineKeyboardButton(t("btn_quiz_eb3",  lang), callback_data="checklist:eb3")],
         [InlineKeyboardButton(t("btn_back",      lang), callback_data="menu")],
     ])
 
@@ -352,6 +355,7 @@ def quiz_select_kb(lang: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(t("btn_quiz_niw",  lang), callback_data="quiz:niw")],
         [InlineKeyboardButton(t("btn_quiz_o1",   lang), callback_data="quiz:o1")],
         [InlineKeyboardButton(t("btn_quiz_e2",   lang), callback_data="quiz:e2")],
+        [InlineKeyboardButton(t("btn_quiz_eb3",  lang), callback_data="quiz:eb3")],
         [InlineKeyboardButton(t("btn_back",      lang), callback_data="menu")],
     ])
 
