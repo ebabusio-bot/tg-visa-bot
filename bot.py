@@ -24,6 +24,7 @@ import llm
 import quiz
 import i18n
 import whatsapp
+import monitor
 from i18n import t, LANGUAGES, LANG_FLAGS, LANG_NAMES_RU, normalize_lang
 
 load_dotenv()
@@ -790,6 +791,76 @@ async def job_daily_summary(ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         log.warning("daily summary FAILED: %s", e)
 
+
+async def _notify_official_changes(bot, results: list[dict]):
+    """Send one plain-text alert per substantively-changed official source.
+    Plain text (no Markdown) so an LLM summary can't break Telegram parsing."""
+    changed = [r for r in results if r["status"] == "changed" and r["summary"]]
+    for r in changed:
+        text = (
+            f"📢 Изменение на официальном сайте\n"
+            f"{r['name']}\n\n"
+            f"{r['summary']}\n\n"
+            f"Источник: {r['url']}"
+        )
+        try:
+            await broadcast_admin(bot, text, disable_web_page_preview=True)
+        except Exception as e:
+            log.warning("official-change notify failed: %s", e)
+    return changed
+
+async def job_check_official_updates(ctx: ContextTypes.DEFAULT_TYPE):
+    """Daily: re-check official USCIS / State Dept pages and alert admins about
+    substantive changes only. Silent when nothing meaningful changed."""
+    try:
+        results = await monitor.check_all()
+    except Exception as e:
+        log.warning("monitor check_all failed: %s", e)
+        return
+    changed = await _notify_official_changes(ctx.bot, results)
+    errors = [r for r in results if r["status"] == "error"]
+    log.info("monitor daily: %d sources, %d changed, %d errors",
+             len(results), len(changed), len(errors))
+
+async def cmd_checkupdates(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: run the official-source check now and report the outcome."""
+    if not _is_admin(update):
+        return
+    await update.message.reply_text("🔎 Проверяю официальные источники USCIS/Госдепа… (10–30 сек)")
+    try:
+        results = await monitor.check_all()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка проверки: {type(e).__name__}: {e}")
+        return
+    changed = await _notify_official_changes(ctx.bot, results)
+    icon = {"new": "🆕 база создана", "unchanged": "✓ без изменений",
+            "cosmetic": "≈ косметика", "changed": "📢 изменение", "error": "⚠️ ошибка"}
+    lines = ["Результат проверки источников:\n"]
+    for r in results:
+        lines.append(f"• {r['name']} — {icon.get(r['status'], r['status'])}")
+    if changed:
+        lines.append(f"\nСущественных изменений: {len(changed)} — детали присланы выше.")
+    else:
+        lines.append("\nСущественных изменений не найдено.")
+    await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
+
+async def cmd_sources(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: list watched official sources and when each was last checked/changed."""
+    if not _is_admin(update):
+        return
+    snaps = {s["source_key"]: s for s in db.list_monitor_snapshots()}
+    lines = ["📋 Отслеживаемые официальные источники:\n"]
+    for src in monitor.SOURCES:
+        s = snaps.get(src["key"])
+        if s:
+            checked = (s["last_checked"] or "—")[:16]
+            changed = (s["last_changed"] or "—")[:16]
+            lines.append(f"• {src['name']}\n   проверено: {checked} · посл. изменение: {changed}")
+        else:
+            lines.append(f"• {src['name']}\n   ещё не проверялось")
+    lines.append("\nПроверить сейчас: /checkupdates")
+    await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
+
 # ────────────────────────────────────────────────────────────── callbacks
 
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1501,6 +1572,8 @@ def main():
     app.add_handler(CommandHandler("stats",   cmd_stats))
     app.add_handler(CommandHandler("costs",   cmd_costs))
     app.add_handler(CommandHandler("reply",   cmd_reply))
+    app.add_handler(CommandHandler("checkupdates", cmd_checkupdates))
+    app.add_handler(CommandHandler("sources", cmd_sources))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(
@@ -1519,6 +1592,7 @@ def main():
     app.job_queue.run_repeating(job_check_reengagement, interval=3600, first=600)
     app.job_queue.run_repeating(job_check_lead_followup, interval=3600, first=900)
     app.job_queue.run_daily(job_daily_summary, time=dt_time(9, 0, tzinfo=ADMIN_TZ))
+    app.job_queue.run_daily(job_check_official_updates, time=dt_time(8, 30, tzinfo=ADMIN_TZ))
     log.info("Bot started. Model=%s, question_limit=%d", llm.MODEL, QUESTION_LIMIT)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

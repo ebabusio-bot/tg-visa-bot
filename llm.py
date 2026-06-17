@@ -206,3 +206,42 @@ async def translate(text_ru: str, lang: str, user_id: int | None = None) -> str:
     _record_usage(resp, "translate", user_id)
     out = "".join(b.text for b in resp.content if b.type == "text").strip()
     return out or text_ru
+
+
+_NO_CHANGE = "НЕТ ИЗМЕНЕНИЙ"
+
+
+async def summarize_change(source_name: str, category: str, diff_text: str) -> str | None:
+    """Judge a diff of an official USCIS / State Dept page.
+
+    Input is a unified-diff fragment (lines starting with '+' added, '-' removed).
+    Returns a short Russian summary of any SUBSTANTIVE change for applicants
+    (document requirements, criteria, processing times, fees, procedure), or
+    None when the change is purely cosmetic (navigation, page-update dates,
+    layout) so the caller can stay silent. Never raises into the caller's flow
+    on a bad response — only on a transport error, which the caller handles."""
+    resp = await _get_client().messages.create(
+        model=MODEL,
+        max_tokens=700,
+        system=[{"type": "text", "text": (
+            "Ты — аналитик иммиграционных правил США. На вход тебе дают DIFF "
+            "официальной страницы USCIS или Госдепа США (строки с «+» добавлены, "
+            "со «-» удалены). Определи, изменилось ли что-то СУЩЕСТВЕННОЕ для "
+            "заявителей: требования к документам, критерии квалификации, сроки "
+            "рассмотрения, размеры пошлин, процедура или правила подачи.\n"
+            "Если изменения только косметические (навигация, дата обновления "
+            "страницы, перестановка блоков, вёрстка, баннеры) и НЕ затрагивают "
+            f"суть правил — ответь СТРОГО одной строкой: {_NO_CHANGE}\n"
+            "Если есть существенное изменение — кратко (до 6 предложений) опиши "
+            "на русском, ЧТО именно изменилось и как это влияет на заявителей. "
+            "Без воды, по существу. Не выдумывай: опирайся только на текст диффа."
+        )}],
+        messages=[{"role": "user", "content": (
+            f"Источник: {source_name} (категория: {category}).\n\nDIFF:\n{diff_text}"
+        )}],
+    )
+    _record_usage(resp, "monitor", 0)
+    out = "".join(b.text for b in resp.content if b.type == "text").strip()
+    if not out or _NO_CHANGE.lower() in out.lower()[:40]:
+        return None
+    return out

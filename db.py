@@ -87,6 +87,14 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             PRIMARY KEY (admin_chat_id, message_id)
         );
+        CREATE TABLE IF NOT EXISTS monitor_snapshots (
+            source_key TEXT PRIMARY KEY,   -- stable id of the watched page
+            url TEXT,
+            content_hash TEXT,             -- hash of normalized visible text
+            content_text TEXT,             -- normalized text (for diffing)
+            last_checked TEXT,
+            last_changed TEXT
+        );
         """)
         # Migrate: add lang / source columns to existing users table if missing.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -549,3 +557,44 @@ def mark_lead_followup(tg_id: int):
         c.execute(
             "INSERT OR IGNORE INTO lead_followup(tg_id) VALUES(?)", (tg_id,),
         )
+
+# ───────────────────────────────────── official-source monitoring snapshots
+
+def get_monitor_snapshot(source_key: str) -> dict | None:
+    """Return the last stored snapshot for a watched page, or None."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT source_key, url, content_hash, content_text, last_checked, "
+            "last_changed FROM monitor_snapshots WHERE source_key=?",
+            (source_key,),
+        ).fetchone()
+    return dict(row) if row else None
+
+def save_monitor_snapshot(source_key: str, url: str, content_hash: str,
+                          content_text: str, changed: bool):
+    """Upsert a snapshot. Always bumps last_checked; bumps last_changed only
+    when `changed` is True (a substantive change was detected)."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO monitor_snapshots"
+            "(source_key, url, content_hash, content_text, last_checked, last_changed) "
+            "VALUES(?,?,?,?, datetime('now'), "
+            "       CASE WHEN ? THEN datetime('now') ELSE NULL END) "
+            "ON CONFLICT(source_key) DO UPDATE SET "
+            "  url=excluded.url, "
+            "  content_hash=excluded.content_hash, "
+            "  content_text=excluded.content_text, "
+            "  last_checked=datetime('now'), "
+            "  last_changed=CASE WHEN ? THEN datetime('now') "
+            "                    ELSE monitor_snapshots.last_changed END",
+            (source_key, url, content_hash, content_text, changed, changed),
+        )
+
+def list_monitor_snapshots() -> list[dict]:
+    """All snapshots, for the admin /sources report."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT source_key, url, last_checked, last_changed "
+            "FROM monitor_snapshots ORDER BY source_key"
+        ).fetchall()
+    return [dict(r) for r in rows]
