@@ -23,6 +23,7 @@ import db
 import llm
 import quiz
 import i18n
+import whatsapp
 from i18n import t, LANGUAGES, LANG_FLAGS, LANG_NAMES_RU, normalize_lang
 
 load_dotenv()
@@ -466,6 +467,23 @@ async def cmd_testnotify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"❌ Ошибка при отправке уведомления: {type(e).__name__}: {e}"
         )
 
+async def cmd_testwa(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: verify the WhatsApp (CallMeBot) notification pipeline."""
+    if not _is_admin(update):
+        return
+    if not whatsapp.is_configured():
+        await update.message.reply_text(
+            "WhatsApp не настроен. Задайте в .env переменные WHATSAPP_NOTIFY_PHONE "
+            "и CALLMEBOT_APIKEY (см. .env.example), затем перезапустите бот."
+        )
+        return
+    ok = await whatsapp.notify("🔔 Тест WhatsApp-уведомления от бота SunnyFl. Если это пришло — всё работает.")
+    await update.message.reply_text(
+        "✅ WhatsApp-сообщение отправлено. Проверьте телефон получателя."
+        if ok else
+        "❌ Не удалось отправить WhatsApp. Проверьте номер и apikey CallMeBot."
+    )
+
 def _is_admin(update: Update) -> bool:
     u = update.effective_user
     c = update.effective_chat
@@ -900,6 +918,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # who reply from the bot. Persists until the client returns to the menu.
         ctx.user_data[S_MODE] = "human"
         ctx.user_data["human_started"] = False
+        ctx.user_data["human_reason"] = (
+            "Записаться на консультацию" if data == "book" else "Связаться с человеком"
+        )
         await q.edit_message_text(
             t("human_prompt", lang), parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([
@@ -1232,6 +1253,22 @@ async def _forward_human(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             log.warning("human header notify failed: %s", e)
+        # Duplicate the alert to a second admin's WhatsApp (no-op unless configured).
+        try:
+            reason = ctx.user_data.get("human_reason", "Связаться с человеком")
+            uname = f"@{u.username}" if u.username else "—"
+            first_msg = (update.message.text or update.message.caption or "").strip()
+            wa_text = (
+                f"🔔 Бот SunnyFl: новая заявка ({reason})\n"
+                f"Клиент: {u.first_name or '—'} ({uname}, id {u.id})\n"
+                f"Язык: {lang_badge(lang)}"
+            )
+            if first_msg:
+                wa_text += f"\nСообщение: {first_msg[:400]}"
+            wa_text += f"\n\nОтветьте клиенту в Telegram: /reply {u.id} <текст>"
+            await whatsapp.notify(wa_text)
+        except Exception as e:
+            log.warning("whatsapp lead notify failed: %s", e)
     try:
         await forward_to_admins(ctx.bot, update.effective_chat.id,
                                 update.message.message_id, client_id=u.id)
@@ -1457,6 +1494,7 @@ def main():
     app.add_handler(CommandHandler("language", cmd_lang))
     app.add_handler(CommandHandler("whoami",      cmd_whoami))
     app.add_handler(CommandHandler("testnotify",  cmd_testnotify))
+    app.add_handler(CommandHandler("testwa",      cmd_testwa))
     app.add_handler(CommandHandler("users",       cmd_users))
     app.add_handler(CommandHandler("chat",    cmd_chat))
     app.add_handler(CommandHandler("leads",   cmd_leads))
