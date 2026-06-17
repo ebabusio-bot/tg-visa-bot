@@ -68,7 +68,7 @@ T: dict[str, dict[str, object]] = {
     "ru": {
         "welcome": (
             "Здравствуйте! 🇺🇸\n"
-            "Я — ИИ-помощник по визам США. Основные категории: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Я — ИИ-помощник по визам США. Основные категории: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "Также отвечаю на справочные вопросы по *убежищу (asylum)*. Помогу разобраться:\n"
             "• в критериях квалификации\n"
             "• в требованиях к документам\n"
@@ -279,13 +279,13 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Стоимость услуг и сроки*\n\n"
             "*1. Консультация*\n"
-            "$300 (60–90 мин) — разбор по критериям и стратегия по вашей категории. "
+            "${consult} (60–90 мин) — разбор по критериям и стратегия по вашей категории. "
             "Входит в стоимость кейса, если далее работаете с нами.\n\n"
             "*2. Юридические услуги (сопровождение петиции командой адвоката)*\n"
-            "• *EB-1 (A, C)* или *EB-2 NIW*: *$15 000* — legal service / attorney fees "
+            "• *EB-1 (A, C)* или *EB-2 NIW*: *${petition}* — legal service / attorney fees "
             "за оценку и подготовку петиции I-140 + evidence.\n"
             "• *I-485* (подача на грин-карту, когда очередь доступна): "
-            "*$500 за каждого члена семьи*.\n"
+            "*${member} за каждого члена семьи*.\n"
             "• Платежи прописываются в договоре — обычно 2–3 транша.\n\n"
             "*3. Госпошлины USCIS*\n"
             "• *I-140*: *$715*\n"
@@ -302,7 +302,7 @@ T: dict[str, dict[str, object]] = {
     "uk": {
         "welcome": (
             "Вітаю! 🇺🇸\n"
-            "Я — ШІ-помічник з американських віз. Основні категорії: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Я — ШІ-помічник з американських віз. Основні категорії: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "Також відповідаю на довідкові питання щодо *притулку (asylum)*. Допоможу розібратися:\n"
             "• з критеріями кваліфікації\n"
             "• з вимогами до документів\n"
@@ -524,13 +524,13 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Вартість послуг і терміни*\n\n"
             "*1. Консультація*\n"
-            "$300 (60–90 хв) — розбір за критеріями та стратегія за вашою категорією. "
+            "${consult} (60–90 хв) — розбір за критеріями та стратегія за вашою категорією. "
             "Входить у вартість кейсу, якщо далі працюєте з нами.\n\n"
             "*2. Юридичні послуги (супровід петиції командою адвоката)*\n"
-            "• *EB-1 (A, C)* або *EB-2 NIW*: *$15 000* — legal service / attorney fees "
+            "• *EB-1 (A, C)* або *EB-2 NIW*: *${petition}* — legal service / attorney fees "
             "за оцінку та підготовку петиції I-140 + evidence.\n"
             "• *I-485* (подача на грін-карту, коли черга доступна): "
-            "*$500 за кожного члена сім'ї*.\n"
+            "*${member} за кожного члена сім'ї*.\n"
             "• Платежі прописуються в договорі — зазвичай 2–3 транші.\n\n"
             "*3. Держмита USCIS*\n"
             "• *I-140*: *$715*\n"
@@ -547,7 +547,7 @@ T: dict[str, dict[str, object]] = {
     "en": {
         "welcome": (
             "Hello! 🇺🇸\n"
-            "I'm an AI assistant for U.S. visas. Main categories: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "I'm an AI assistant for U.S. visas. Main categories: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "I also answer general questions about *asylum*. I can help with:\n"
             "• qualification criteria\n"
             "• document requirements\n"
@@ -756,13 +756,13 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Pricing & timelines*\n\n"
             "*1. Consultation*\n"
-            "$300 (60–90 min) — review of criteria and strategy for your category. "
+            "${consult} (60–90 min) — review of criteria and strategy for your category. "
             "Credited toward case fee if you retain us.\n\n"
             "*2. Legal services (petition preparation by attorney team)*\n"
-            "• *EB-1 (A, C)* or *EB-2 NIW*: *$15 000* — attorney fees "
+            "• *EB-1 (A, C)* or *EB-2 NIW*: *${petition}* — attorney fees "
             "for evaluation and preparation of I-140 + evidence.\n"
             "• *I-485* (green-card filing when the queue is available): "
-            "*$500 per family member*.\n"
+            "*${member} per family member*.\n"
             "• Payments are staged in the retainer — typically 2–3 tranches.\n\n"
             "*3. USCIS government fees*\n"
             "• *I-140*: *$715*\n"
@@ -779,7 +779,7 @@ T: dict[str, dict[str, object]] = {
     "es": {
         "welcome": (
             "¡Hola! 🇺🇸\n"
-            "Soy un asistente de IA para visas de EE.UU. Categorías principales: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Soy un asistente de IA para visas de EE.UU. Categorías principales: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "También respondo preguntas generales sobre *asilo*. Puedo ayudar con:\n"
             "• criterios de calificación\n"
             "• requisitos documentales\n"
@@ -988,12 +988,12 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Precios y plazos*\n\n"
             "*1. Consulta*\n"
-            "$300 (60–90 min) — análisis de criterios y estrategia para su categoría. "
+            "${consult} (60–90 min) — análisis de criterios y estrategia para su categoría. "
             "Se acredita al total del caso si continúa con nosotros.\n\n"
             "*2. Servicios legales (preparación de petición por equipo de abogados)*\n"
-            "• *EB-1 (A, C)* o *EB-2 NIW*: *$15 000* — honorarios por "
+            "• *EB-1 (A, C)* o *EB-2 NIW*: *${petition}* — honorarios por "
             "evaluación y preparación de I-140 + evidencia.\n"
-            "• *I-485* (green card cuando haya cupo): *$500 por familiar*.\n"
+            "• *I-485* (green card cuando haya cupo): *${member} por familiar*.\n"
             "• Pagos escalonados en el contrato — normalmente 2–3 tramos.\n\n"
             "*3. Aranceles gubernamentales USCIS*\n"
             "• *I-140*: *$715*\n"
@@ -1010,7 +1010,7 @@ T: dict[str, dict[str, object]] = {
     "fr": {
         "welcome": (
             "Bonjour ! 🇺🇸\n"
-            "Je suis un assistant IA pour les visas américains. Catégories principales : *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Je suis un assistant IA pour les visas américains. Catégories principales : *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "Je réponds aussi aux questions générales sur l'*asile*. Je peux aider sur :\n"
             "• les critères de qualification\n"
             "• les exigences documentaires\n"
@@ -1209,12 +1209,12 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Tarifs et délais*\n\n"
             "*1. Consultation*\n"
-            "$300 (60–90 min) — analyse des critères et stratégie pour votre catégorie. "
+            "${consult} (60–90 min) — analyse des critères et stratégie pour votre catégorie. "
             "Crédité sur le total si vous nous mandatez.\n\n"
             "*2. Services juridiques (préparation de la pétition par l'équipe d'avocats)*\n"
-            "• *EB-1 (A, C)* ou *EB-2 NIW* : *$15 000* — honoraires pour "
+            "• *EB-1 (A, C)* ou *EB-2 NIW* : *${petition}* — honoraires pour "
             "évaluation et préparation de I-140 + preuves.\n"
-            "• *I-485* (carte verte quand la file le permet) : *$500 par membre de famille*.\n"
+            "• *I-485* (carte verte quand la file le permet) : *${member} par membre de famille*.\n"
             "• Paiements échelonnés au contrat — généralement 2–3 tranches.\n\n"
             "*3. Frais USCIS*\n"
             "• *I-140* : *$715*\n"
@@ -1231,7 +1231,7 @@ T: dict[str, dict[str, object]] = {
     "ht": {
         "welcome": (
             "Bonjou! 🇺🇸\n"
-            "Mwen se yon asistan IA pou viza Ameriken. Kategori prensipal yo: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Mwen se yon asistan IA pou viza Ameriken. Kategori prensipal yo: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "Mwen reponn tou kesyon jeneral sou *azil*. Mwen ka ede ou ak:\n"
             "• kritè kalifikasyon yo\n"
             "• dokiman ki nesesè yo\n"
@@ -1429,12 +1429,12 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Pri ak Dele*\n\n"
             "*1. Konsiltasyon*\n"
-            "$300 (60–90 min) — analiz kritè ak estrateji pou kategori ou. "
+            "${consult} (60–90 min) — analiz kritè ak estrateji pou kategori ou. "
             "Kredite sou total ka a si ou kontinye avèk nou.\n\n"
             "*2. Sèvis legal (preparasyon petisyon pa ekip avoka)*\n"
-            "• *EB-1 (A, C)* oswa *EB-2 NIW*: *$15 000* — frè avoka "
+            "• *EB-1 (A, C)* oswa *EB-2 NIW*: *${petition}* — frè avoka "
             "pou evalyasyon ak preparasyon I-140 + prèv.\n"
-            "• *I-485* (green card lè liy lan disponib): *$500 pou chak manm fanmi*.\n"
+            "• *I-485* (green card lè liy lan disponib): *${member} pou chak manm fanmi*.\n"
             "• Peman an etap nan kontra a — anjeneral 2–3 tranch.\n\n"
             "*3. Frè gouvènman USCIS*\n"
             "• *I-140*: *$715*\n"
@@ -1451,7 +1451,7 @@ T: dict[str, dict[str, object]] = {
     "pt": {
         "welcome": (
             "Olá! 🇺🇸\n"
-            "Sou um assistente de IA para vistos dos EUA. Categorias principais: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*. "
+            "Sou um assistente de IA para vistos dos EUA. Categorias principais: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*. "
             "Também respondo a perguntas gerais sobre *asilo*. Posso ajudar com:\n"
             "• critérios de qualificação\n"
             "• requisitos documentais\n"
@@ -1649,12 +1649,12 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *Preços e Prazos*\n\n"
             "*1. Consulta*\n"
-            "$300 (60–90 min) — análise de critérios e estratégia para sua categoria. "
+            "${consult} (60–90 min) — análise de critérios e estratégia para sua categoria. "
             "Creditado no total do caso se prosseguir conosco.\n\n"
             "*2. Serviços jurídicos (preparação da petição pela equipe de advogados)*\n"
-            "• *EB-1 (A, C)* ou *EB-2 NIW*: *$15 000* — honorários "
+            "• *EB-1 (A, C)* ou *EB-2 NIW*: *${petition}* — honorários "
             "por avaliação e preparação de I-140 + evidências.\n"
-            "• *I-485* (green card quando houver vaga): *$500 por membro da família*.\n"
+            "• *I-485* (green card quando houver vaga): *${member} por membro da família*.\n"
             "• Pagamentos escalonados no contrato — normalmente 2–3 tranches.\n\n"
             "*3. Taxas do USCIS*\n"
             "• *I-140*: *$715*\n"
@@ -1671,7 +1671,7 @@ T: dict[str, dict[str, object]] = {
     "hi": {
         "welcome": (
             "नमस्ते! 🇺🇸\n"
-            "मैं अमेरिकी वीज़ा के लिए एक AI सहायक हूँ। मुख्य श्रेणियाँ: *EB-1A*, *EB-2 NIW*, *O-1*, *E-2*। "
+            "मैं अमेरिकी वीज़ा के लिए एक AI सहायक हूँ। मुख्य श्रेणियाँ: *EB-1A*, *EB-2 NIW*, *EB-3*, *O-1*, *E-2*। "
             "मैं *शरण (asylum)* पर सामान्य प्रश्नों का भी उत्तर देता हूँ। मैं सहायता कर सकता हूँ:\n"
             "• योग्यता मानदंडों में\n"
             "• दस्तावेज़ आवश्यकताओं में\n"
@@ -1869,12 +1869,12 @@ T: dict[str, dict[str, object]] = {
         "pricing": (
             "💰 *शुल्क और समयसीमा*\n\n"
             "*1. परामर्श*\n"
-            "$300 (60–90 मिनट) — आपकी श्रेणी के लिए मानदंड विश्लेषण और रणनीति। "
+            "${consult} (60–90 मिनट) — आपकी श्रेणी के लिए मानदंड विश्लेषण और रणनीति। "
             "यदि हमारे साथ आगे बढ़ते हैं, तो केस शुल्क में जमा।\n\n"
             "*2. कानूनी सेवाएँ (वकील टीम द्वारा याचिका तैयारी)*\n"
-            "• *EB-1 (A, C)* या *EB-2 NIW*: *$15 000* — I-140 + evidence के "
+            "• *EB-1 (A, C)* या *EB-2 NIW*: *${petition}* — I-140 + evidence के "
             "मूल्यांकन और तैयारी के लिए attorney fees।\n"
-            "• *I-485* (कतार उपलब्ध होने पर green card): *$500 प्रति परिवार सदस्य*।\n"
+            "• *I-485* (कतार उपलब्ध होने पर green card): *${member} प्रति परिवार सदस्य*।\n"
             "• भुगतान अनुबंध में चरणबद्ध — आमतौर पर 2–3 किस्तें।\n\n"
             "*3. USCIS सरकारी शुल्क*\n"
             "• *I-140*: *$715*\n"
@@ -1917,6 +1917,24 @@ def t(key: str, lang: str) -> object:
     if val is None:
         val = T["en"].get(key, key)
     return val
+
+
+def pricing_text(lang: str) -> str:
+    """The pricing message with firm service prices substituted from config
+    (the {consult}/{petition}/{member} placeholders). Government USCIS fees in
+    the same text are literal and untouched."""
+    import config
+    return str(t("pricing", lang)).format(**config.prices())
+
+
+def welcome_text(lang: str) -> str:
+    """The greeting, optionally prefixed with the firm's brand line when
+    FIRM_NAME is configured (white-label). Unbranded deploys are unchanged."""
+    import config
+    body = str(t("welcome", lang))
+    if config.FIRM_NAME:
+        return f"*{config.FIRM_NAME}*\n\n{body}"
+    return body
 
 
 def normalize_lang(lang: str | None) -> str:

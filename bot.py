@@ -44,6 +44,19 @@ QUESTION_LIMIT = 25
 # question cap is not enforced for them. Listed here so it's easy to extend.
 UNLIMITED_IDS = set(ADMIN_CHAT_IDS[1:2])
 
+# OWNER_CHAT_ID — operator's chat(s) for TECHNICAL alerts (bot errors/outages),
+# kept separate from ADMIN_CHAT_ID (which receives client leads). One id or
+# several, comma/semicolon-separated. If unset, technical alerts fall back to
+# the admins, so existing single-client deploys behave exactly as before.
+OWNER_CHAT_IDS = [
+    int(x) for x in os.environ.get("OWNER_CHAT_ID", "").replace(";", ",").split(",")
+    if x.strip()
+] or ADMIN_CHAT_IDS
+
+# Optional firm/brand name (white-label). When set, it prefixes the client
+# greeting and tags technical alerts so the operator knows whose bot erred.
+FIRM_NAME = os.environ.get("FIRM_NAME", "").strip()
+
 # Optional monthly AI budget (USD) for THIS bot/firm. When set, /costs shows
 # how much of the month's budget is left. Unset/0 → no remaining line.
 try:
@@ -151,6 +164,16 @@ async def broadcast_admin(bot, text: str, client_id: int | None = None, **kwargs
                 db.save_relay(aid, msg.message_id, client_id)
         except Exception as e:
             log.warning("admin broadcast to %s failed: %s", aid, e)
+
+async def broadcast_owner(bot, text: str, **kwargs):
+    """Send a TECHNICAL alert (bot errors/outages) to the operator chat(s).
+    Separate from broadcast_admin so client-facing admins aren't spammed with
+    stack traces. Falls back to the admins when OWNER_CHAT_ID is unset."""
+    for oid in OWNER_CHAT_IDS:
+        try:
+            await safe_send(bot, oid, text, **kwargs)
+        except Exception as e:
+            log.warning("owner broadcast to %s failed: %s", oid, e)
 
 async def forward_to_admins(bot, from_chat_id: int, message_id: int,
                             client_id: int | None = None):
@@ -412,7 +435,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     lang = normalize_lang(saved_lang)
     await update.message.reply_text(
-        t("welcome", lang), parse_mode=ParseMode.MARKDOWN,
+        i18n.welcome_text(lang), parse_mode=ParseMode.MARKDOWN,
         reply_markup=main_menu_kb(lang),
     )
 
@@ -442,11 +465,20 @@ async def cmd_whoami(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Diagnostic: show user's Telegram ID and whether it matches ADMIN_CHAT_ID."""
     u = update.effective_user
     is_admin = u and u.id in ADMIN_CHAT_IDS
+    is_owner = u and u.id in OWNER_CHAT_IDS
     lang = db.get_user_lang(u.id) or "—"
+    owner_line = (
+        f"OWNER ID (техно-алерты): {', '.join(map(str, OWNER_CHAT_IDS))}"
+        if os.environ.get("OWNER_CHAT_ID", "").strip()
+        else "OWNER ID: не задан (техно-алерты идут на ADMIN)"
+    )
     await update.message.reply_text(
         f"Ваш Telegram user ID: {u.id}\n"
-        f"ADMIN ID в настройках бота: {', '.join(map(str, ADMIN_CHAT_IDS))}\n"
-        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}\n"
+        f"Фирма: {FIRM_NAME or 'не задана'}\n"
+        f"ADMIN ID (лиды/заявки): {', '.join(map(str, ADMIN_CHAT_IDS))}\n"
+        f"{owner_line}\n"
+        f"Совпадают: {'✅ да (вы админ)' if is_admin else '❌ нет'}"
+        f"{' · вы и owner' if is_owner else ''}\n"
         f"Язык: {lang}"
     )
 
@@ -457,11 +489,14 @@ async def cmd_testnotify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     try:
         await broadcast_admin(ctx.bot,
-            f"🔔 Тестовое уведомление\nОт /testnotify, user id {u.id}"
+            f"🔔 Тестовое уведомление (ADMIN / лиды)\nОт /testnotify, user id {u.id}"
+        )
+        await broadcast_owner(ctx.bot,
+            f"🔧 Тестовый техно-алерт (OWNER / ошибки)\nОт /testnotify, user id {u.id}"
         )
         await update.message.reply_text(
-            "✅ Тестовое уведомление отправлено. Если выше видно сообщение «🔔 Тестовое уведомление» — "
-            "пайплайн работает."
+            "✅ Тестовые уведомления отправлены: одно в ADMIN-канал (лиды), одно в "
+            "OWNER-канал (техно-алерты). Если OWNER_CHAT_ID не задан, оба пришли админам."
         )
     except Exception as e:
         await update.message.reply_text(
@@ -890,7 +925,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await safe_send(
             ctx.bot,
             q.message.chat_id,
-            t("welcome", new_lang),
+            i18n.welcome_text(new_lang),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=main_menu_kb(new_lang),
         )
@@ -1005,7 +1040,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "pricing":
         ctx.user_data[S_MODE] = None
         await q.edit_message_text(
-            t("pricing", lang),
+            i18n.pricing_text(lang),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
@@ -1545,17 +1580,18 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
                 elif update.message.photo:
                     action = "photo"
 
+        firm_tag = f" · {FIRM_NAME}" if FIRM_NAME else ""
         alert = (
-            f"⚠️ *Ошибка в боте*\n\n"
+            f"⚠️ *Ошибка в боте*{firm_tag}\n\n"
             f"*Пользователь:* {user_info}\n"
             f"*Действие:* `{action}`\n"
             f"*Ошибка:* `{type(err).__name__}: {err}`\n\n"
             f"```\n{tb}\n```"
         )
         alert = alert[:4000]
-        await broadcast_admin(ctx.bot, alert, parse_mode=ParseMode.MARKDOWN)
+        await broadcast_owner(ctx.bot, alert, parse_mode=ParseMode.MARKDOWN)
     except Exception:
-        log.exception("Failed to send error alert to admin")
+        log.exception("Failed to send error alert to owner")
 
 def main():
     db.init_db()
