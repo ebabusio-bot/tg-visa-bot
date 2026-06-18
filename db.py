@@ -519,13 +519,20 @@ def get_user_for_reminder(tg_id: int) -> dict | None:
     return dict(row) if row else None
 
 def find_reengagement_targets() -> list[int]:
-    """Users who visited the bot yesterday (last activity 24-48h ago), never
-    left a lead, and have not yet been sent a re-engagement reminder."""
+    """Users who interacted with the bot (last action 24-48h ago), did NOT
+    request a consultation, and have not yet been sent a re-engagement reminder.
+
+    Browsing, finishing a quiz, getting a checklist, or sending a case for a
+    free review all qualify — only an actual 'book a consultation / contact a
+    human' lead (sources booking / booking_file / human) suppresses it. Those
+    hot leads are handled by find_lead_followup_targets instead, so nobody gets
+    two reminders."""
     with _conn() as c:
         rows = c.execute(
             "SELECT e.tg_id, MAX(e.created_at) AS last_seen "
             "FROM events e "
-            "WHERE e.tg_id NOT IN (SELECT tg_id FROM leads) "
+            "WHERE e.tg_id NOT IN "
+            "  (SELECT tg_id FROM leads WHERE source IN ('booking','booking_file','human')) "
             "AND e.tg_id NOT IN (SELECT tg_id FROM reengagement) "
             "GROUP BY e.tg_id "
             "HAVING last_seen <= datetime('now', '-24 hours') "
@@ -541,14 +548,17 @@ def mark_reengaged(tg_id: int):
         )
 
 def find_lead_followup_targets() -> list[int]:
-    """Users whose first lead was left 24-48h ago and who have not yet
-    received a follow-up nudge. 'Left a lead' means they raised their hand —
-    this warm-up keeps them from going cold before the firm closes them."""
+    """Users who actually requested a consultation/contact (a booking /
+    booking_file / human lead) 24-48h ago and have not yet received a follow-up
+    nudge. This warm-up keeps a hot lead from going cold before the firm closes
+    it. Quiz/checklist/case-review/browse users are NOT here — they get the
+    re-engagement reminder instead (see find_reengagement_targets)."""
     with _conn() as c:
         rows = c.execute(
             "SELECT l.tg_id, MIN(l.created_at) AS first_lead "
             "FROM leads l "
-            "WHERE l.tg_id NOT IN (SELECT tg_id FROM lead_followup) "
+            "WHERE l.source IN ('booking','booking_file','human') "
+            "AND l.tg_id NOT IN (SELECT tg_id FROM lead_followup) "
             "GROUP BY l.tg_id "
             "HAVING first_lead <= datetime('now', '-24 hours') "
             "AND first_lead >= datetime('now', '-48 hours')"
