@@ -129,7 +129,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Вчера вы заходили к ИИ-ассистенту по иммиграции в США. "
-            "Могу ли я ответить на ваши вопросы?"
+            "Могу ли я ответить на ваши вопросы? "
+            "Могу также предложить Вам записаться на консультацию."
         ),
         "reminder_lead_followup": (
             "👋 Здравствуйте! Недавно вы оставили заявку — наши специалисты "
@@ -363,7 +364,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Вчора ви заходили до ШІ-асистента з імміграції до США. "
-            "Чи можу я відповісти на ваші запитання?"
+            "Чи можу я відповісти на ваші запитання? "
+            "Також можу запропонувати Вам записатися на консультацію."
         ),
         "reminder_lead_followup": (
             "👋 Вітаємо! Нещодавно ви залишили заявку — наші спеціалісти "
@@ -607,7 +609,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Yesterday you visited the AI assistant for US immigration. "
-            "Can I answer any questions for you?"
+            "Can I answer any questions for you? "
+            "I can also offer to book a consultation for you."
         ),
         "reminder_lead_followup": (
             "👋 Hello! You recently left a request — our specialists are ready "
@@ -839,7 +842,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Ayer visitó el asistente de IA para inmigración a EE. UU. "
-            "¿Puedo responder a alguna pregunta?"
+            "¿Puedo responder a alguna pregunta? "
+            "También puedo ofrecerle reservar una consulta."
         ),
         "reminder_lead_followup": (
             "👋 ¡Hola! Recientemente dejó una solicitud — nuestros especialistas "
@@ -1061,7 +1065,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Hier, vous avez consulté l'assistant IA pour l'immigration aux États-Unis. "
-            "Puis-je répondre à vos questions ?"
+            "Puis-je répondre à vos questions ? "
+            "Je peux aussi vous proposer de réserver une consultation."
         ),
         "reminder_lead_followup": (
             "👋 Bonjour ! Vous avez récemment laissé une demande — nos spécialistes "
@@ -1282,7 +1287,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Yè ou te vizite asistan IA pou imigrasyon Ozetazini an. "
-            "Èske mwen ka reponn nenpòt kesyon pou ou?"
+            "Èske mwen ka reponn nenpòt kesyon pou ou? "
+            "Mwen ka pwopoze w tou pou pran yon konsiltasyon."
         ),
         "reminder_lead_followup": (
             "👋 Bonjou! Resamman ou te kite yon demann — espesyalis nou yo pare "
@@ -1502,7 +1508,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 Ontem você visitou o assistente de IA para imigração nos EUA. "
-            "Posso responder a alguma pergunta?"
+            "Posso responder a alguma pergunta? "
+            "Também posso sugerir agendar uma consulta."
         ),
         "reminder_lead_followup": (
             "👋 Olá! Você deixou recentemente uma solicitação — nossos especialistas "
@@ -1722,7 +1729,8 @@ T: dict[str, dict[str, object]] = {
         ),
         "reminder_reengagement": (
             "👋 कल आपने अमेरिका आप्रवासन के लिए AI सहायक का दौरा किया था। "
-            "क्या मैं आपके किसी प्रश्न का उत्तर दे सकता हूँ?"
+            "क्या मैं आपके किसी प्रश्न का उत्तर दे सकता हूँ? "
+            "मैं आपको परामर्श बुक करने का सुझाव भी दे सकता हूँ।"
         ),
         "reminder_lead_followup": (
             "👋 नमस्ते! आपने हाल ही में एक अनुरोध छोड़ा था — हमारे विशेषज्ञ "

@@ -759,10 +759,11 @@ async def send_reengagement(bot, tg_id: int):
     user_row = db.get_user_for_reminder(tg_id)
     lang = (user_row and user_row.get("lang")) or "ru"
     text = t("reminder_reengagement", lang)
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton(t("btn_ask", lang),  callback_data="ask"),
-        InlineKeyboardButton(t("btn_back", lang), callback_data="menu"),
-    ]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_book", lang), callback_data="book")],
+        [InlineKeyboardButton(t("btn_ask", lang),  callback_data="ask"),
+         InlineKeyboardButton(t("btn_back", lang), callback_data="menu")],
+    ])
     try:
         await bot.send_message(tg_id, text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
         log.info("re-engagement sent: user=%s", tg_id)
