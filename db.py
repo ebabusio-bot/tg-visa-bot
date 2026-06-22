@@ -283,11 +283,12 @@ def usage_totals(days: int | None = None) -> dict:
             args,
         ).fetchone()
         months = c.execute(
-            """SELECT substr(created_at,1,7) AS month,
-                      COUNT(*) AS calls,
-                      COALESCE(SUM(cost_usd),0) AS cost_usd
-               FROM usage
-               GROUP BY month ORDER BY month DESC LIMIT 12"""
+            f"""SELECT substr(created_at,1,7) AS month,
+                       COUNT(*) AS calls,
+                       COALESCE(SUM(cost_usd),0) AS cost_usd
+                FROM usage {where}
+                GROUP BY month ORDER BY month DESC LIMIT 12""",
+            args,
         ).fetchall()
     return {
         "calls": row["calls"],

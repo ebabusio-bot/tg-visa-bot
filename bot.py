@@ -603,11 +603,13 @@ def _format_stats(days: int, title: str) -> str:
     s = db.stats_summary(days)
     quiz_conv = ""
     if s["quiz_starts"]:
-        pct = 100 * s["quiz_finishes"] // s["quiz_starts"]
+        # Clamp: over a short window a finish/lead can be counted while its
+        # originating start fell in an earlier period, so the ratio can exceed 1.
+        pct = min(100, 100 * s["quiz_finishes"] // s["quiz_starts"])
         quiz_conv = f" ({pct}% завершено)"
     start_to_lead = ""
     if s["starts"]:
-        pct = 100 * s["leads"] // s["starts"]
+        pct = min(100, 100 * s["leads"] // s["starts"])
         start_to_lead = f"\n• Конверсия /start → заявка: {pct}%"
     by_kind = "—"
     if s["by_kind"]:
@@ -727,7 +729,7 @@ async def cmd_reply(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Клиент мог не писать боту или заблокировать его."
         )
 
-KIND_NAMES = {"eb1a": "EB-1A", "niw": "EB-2 NIW", "o1": "O-1", "e2": "E-2"}
+KIND_NAMES = {"eb1a": "EB-1A", "niw": "EB-2 NIW", "o1": "O-1", "e2": "E-2", "eb3": "EB-3"}
 
 async def send_quiz_reminder(bot, tg_id: int, kind: str, stage: int):
     """Send a 'finish your quiz' reminder to the user in their language."""
@@ -1248,22 +1250,6 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _forward_human(update, ctx)
         return
 
-    if mode == "lead":
-        db.save_lead(u.id, u.username, text, "booking")
-        ctx.user_data[S_MODE] = None
-        admin_txt = (
-            f"📞 *Новая заявка на консультацию*\n\n"
-            f"От: {fmt_user_md(u)}\n"
-            f"Язык: {md_esc(lang_badge(lang))}\n\n"
-            f"{md_esc(text)}"
-        )
-        try:
-            await broadcast_admin(ctx.bot, admin_txt, client_id=u.id, parse_mode=ParseMode.MARKDOWN)
-        except Exception as e:
-            log.warning("admin notify failed: %s", e)
-        await update.message.reply_text(t("lead_received", lang), reply_markup=main_menu_kb(lang))
-        return
-
     if mode == "case_review":
         await _forward_case_review(update, ctx, "text")
         return
@@ -1498,35 +1484,6 @@ async def _deliver_checklist(update: Update, ctx: ContextTypes.DEFAULT_TYPE, kin
     await safe_send(ctx.bot, chat_id, checklist_txt,
                     parse_mode=ParseMode.MARKDOWN, reply_markup=offer_book_kb(lang))
 
-async def _forward_booking_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Forward attachment sent during lead (booking) mode to the admin."""
-    u = update.effective_user
-    db.upsert_user(u.id, u.username, u.first_name)
-    lang = user_lang(u.id)
-    db.save_lead(u.id, u.username, "Файл приложен к заявке (см. пересланное сообщение)", "booking_file")
-    try:
-        await broadcast_admin(ctx.bot,
-            f"📎 *Файл к заявке на консультацию*\n\n"
-            f"От: {fmt_user_md(u)}\n"
-            f"Язык: {md_esc(lang_badge(lang))}\n"
-            f"_Файл пересылается ниже._",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    except Exception as e:
-        log.warning("admin notify failed: %s", e)
-
-    forwarded = True
-    try:
-        await forward_to_admins(ctx.bot, update.effective_chat.id, update.message.message_id, client_id=update.effective_user.id)
-    except Exception as e:
-        forwarded = False
-        log.warning("forward failed: %s", e)
-
-    if forwarded:
-        await update.message.reply_text(t("booking_file_ok", lang))
-    else:
-        await update.message.reply_text(t("booking_file_failed", lang))
-
 async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle non-text messages (documents/photos/voice/video/audio)."""
     if update.message is None:  # e.g. an edited media message — nothing fresh to handle
@@ -1555,9 +1512,6 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if mode == "support":
         await _forward_support(update, ctx)
-        return
-    if mode == "lead":
-        await _forward_booking_attachment(update, ctx)
         return
     await update.message.reply_text(
         t("attachment_hint", lang),
