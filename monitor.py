@@ -87,9 +87,16 @@ async def _fedreg_fetch(agency_slug: str) -> list[dict]:
 
 async def check_federal_register() -> dict:
     """Return {'status', 'new': [docs]}. On the very first run we silently
-    establish a baseline (mark everything seen, alert on nothing)."""
+    establish a baseline (mark everything seen, alert on nothing).
+
+    Important: new (non-baseline) docs are NOT marked seen here. Each alert
+    dict carries its 'doc_id', and the caller marks it seen only AFTER the
+    alert is pushed (see job_check_official_updates). That way a crash or
+    delivery failure can't permanently suppress a rule-change alert — at worst
+    it re-alerts next run."""
     baseline = db.monitor_seen_count() == 0
     new_docs: list[dict] = []
+    seen_this_run: set[str] = set()
     any_fetch = False
     for slug, short in _FEDREG_AGENCIES:
         try:
@@ -102,10 +109,12 @@ async def check_federal_register() -> dict:
             if not _relevant(doc):
                 continue
             did = doc.get("document_number")
-            if not did or db.has_doc_seen(did):
+            if not did or db.has_doc_seen(did) or did in seen_this_run:
                 continue
-            db.mark_doc_seen(did)
-            if not baseline:
+            seen_this_run.add(did)
+            if baseline:
+                db.mark_doc_seen(did)  # silent baseline, no alert to deliver
+            else:
                 doc["_agency"] = short
                 new_docs.append(doc)
 
@@ -122,6 +131,7 @@ async def check_federal_register() -> dict:
         except Exception as e:
             log.warning("fedreg summarize failed: %s", e)
         out.append({
+            "doc_id": doc.get("document_number"),
             "name": f"Federal Register · {doc.get('_agency','')} · {doc.get('type','')}",
             "title": doc.get("title", ""),
             "date": doc.get("publication_date", ""),
@@ -211,8 +221,11 @@ async def check_html_source(src: dict) -> dict:
 
 async def check_all() -> dict:
     """Run both channels. Returns:
-      {'alerts': [{name, summary, url}], 'report': [{name, status}]}.
-    `alerts` is what gets pushed to admins; `report` is the status table."""
+      {'alerts': [{name, summary, url}], 'report': [{name, status}],
+       'fedreg_pending_seen': [doc_id, ...]}.
+    `alerts` is what gets pushed to admins; `report` is the status table;
+    `fedreg_pending_seen` are Federal Register doc ids the caller must mark seen
+    AFTER successfully pushing the alerts (so a failed push re-alerts next run)."""
     alerts: list[dict] = []
     report: list[dict] = []
 
@@ -224,10 +237,13 @@ async def check_all() -> dict:
 
     fr = await check_federal_register()
     report.append({"name": "Federal Register (USCIS / DHS / Госдеп)", "status": fr["status"]})
+    pending_seen: list[str] = []
     for d in fr["new"]:
         summary = d["summary"]
         if d.get("title"):
             summary = f"{d['title']}\n\n{summary}"
         alerts.append({"name": d["name"], "summary": summary, "url": d["url"]})
+        if d.get("doc_id"):
+            pending_seen.append(d["doc_id"])
 
-    return {"alerts": alerts, "report": report}
+    return {"alerts": alerts, "report": report, "fedreg_pending_seen": pending_seen}

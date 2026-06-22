@@ -434,7 +434,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     lang = normalize_lang(saved_lang)
-    await update.message.reply_text(
+    await safe_reply(
+        update.message,
         i18n.welcome_text(lang), parse_mode=ParseMode.MARKDOWN,
         reply_markup=main_menu_kb(lang),
     )
@@ -852,6 +853,10 @@ async def job_check_official_updates(ctx: ContextTypes.DEFAULT_TYPE):
         log.warning("monitor check_all failed: %s", e)
         return
     await _push_official_alerts(ctx.bot, res["alerts"])
+    # Mark Federal Register docs seen only after the push, so a failed delivery
+    # re-alerts next run instead of being silently suppressed.
+    for did in res.get("fedreg_pending_seen", []):
+        db.mark_doc_seen(did)
     log.info("monitor daily: %d alerts; report=%s",
              len(res["alerts"]), {r["name"]: r["status"] for r in res["report"]})
 
@@ -867,6 +872,8 @@ async def cmd_checkupdates(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка проверки: {type(e).__name__}: {e}")
         return
     await _push_official_alerts(ctx.bot, res["alerts"])
+    for did in res.get("fedreg_pending_seen", []):
+        db.mark_doc_seen(did)
     icon = {"new": "📢 есть новое", "baseline": "🆕 база создана",
             "unchanged": "✓ без изменений", "cosmetic": "≈ косметика",
             "changed": "📢 изменение", "error": "⚠️ ошибка"}
@@ -1107,7 +1114,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("checklist:"):
         kind = data.split(":", 1)[1]
-        if kind not in ("eb1a", "niw", "o1", "e2"):
+        if kind not in ("eb1a", "niw", "o1", "e2", "eb3"):
             await q.edit_message_text(
                 t("unknown_quiz", lang), reply_markup=main_menu_kb(lang),
             )
@@ -1179,6 +1186,7 @@ async def handle_quiz_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE, is_
     questions_ru = {
         "eb1a": _p.EB1A_QUESTIONS, "niw": _p.NIW_QUESTIONS,
         "o1":   _p.O1_QUESTIONS,   "e2":  _p.E2_QUESTIONS,
+        "eb3":  i18n.t("eb3_questions", "ru"),
     }.get(kind, cfg["questions"])
     detail = "\n".join(
         f"{'✅' if a else '❌'} {questions_ru[i]}"

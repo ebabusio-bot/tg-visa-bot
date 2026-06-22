@@ -7,12 +7,20 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "bot.db"
 
 def _conn():
-    c = sqlite3.connect(DB_PATH)
+    # timeout/busy_timeout: wait for a lock instead of immediately raising
+    # OperationalError("database is locked") under concurrent access, so a
+    # rate-limit check never crashes a user's request.
+    c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=30000")
     return c
 
 def init_db():
     with _conn() as c:
+        # WAL lets readers and a writer coexist without blocking — far fewer
+        # lock collisions for a bot serving many users concurrently. Persistent
+        # in the DB file, so setting it once here is enough.
+        c.execute("PRAGMA journal_mode=WAL")
         c.executescript("""
         CREATE TABLE IF NOT EXISTS users (
             tg_id INTEGER PRIMARY KEY,
@@ -439,8 +447,11 @@ def mark_reminded(tg_id: int, kind: str, stage: int):
     """Mark that we sent reminder stage N for this user+quiz."""
     col = f"reminder{stage}_at"
     with _conn() as c:
+        # IS NULL guard makes this idempotent: a second pass (or a reset+resend
+        # race) can't overwrite an already-recorded reminder timestamp.
         c.execute(
-            f"UPDATE quiz_state SET {col}=datetime('now') WHERE tg_id=? AND kind=?",
+            f"UPDATE quiz_state SET {col}=datetime('now') "
+            f"WHERE tg_id=? AND kind=? AND {col} IS NULL",
             (tg_id, kind),
         )
 
