@@ -269,8 +269,14 @@ def usage_totals(days: int | None = None) -> dict:
     where = ""
     args: tuple = ()
     if days is not None:
-        where = "WHERE created_at >= datetime('now', ?)"
-        args = (f"-{int(days)} days",)
+        if days <= 0:
+            # "Today": from the start of the current day, not "now minus 0 days"
+            # (which would be the current instant and exclude everything today).
+            where = "WHERE created_at >= datetime('now', 'start of day')"
+            args = ()
+        else:
+            where = "WHERE created_at >= datetime('now', ?)"
+            args = (f"-{int(days)} days",)
     with _conn() as c:
         row = c.execute(
             f"""SELECT COUNT(*) AS calls,

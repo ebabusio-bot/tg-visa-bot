@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import time as _time
+from collections import deque
 from datetime import time as dt_time
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -74,6 +75,54 @@ S_MODE      = "mode"
 S_QUIZ_KIND = "quiz_kind"
 S_QUIZ_IDX  = "quiz_idx"
 S_QUIZ_ANS  = "quiz_answers"
+
+# ── Anti-spam / flood protection ───────────────────────────────────────────
+# Invisible to real clients: a per-user sliding-window limiter that protects
+# Claude spend and admin-notification spam from bots and abusive floods. Held
+# in memory (resets on restart, which is fine for short-term flood control).
+# Thresholds are generous so normal use (quiz taps, follow-up questions) never
+# trips them. Admins are exempt; Telegram bot accounts are dropped outright.
+_FLOOD_WINDOW   = 10.0   # seconds in the sliding window
+_FLOOD_MAX      = 8      # messages allowed per window before throttling
+_FLOOD_COOLDOWN = 30.0   # seconds of silent ignore after tripping the limit
+_msg_times: dict[int, deque] = {}
+_cooldown_until: dict[int, float] = {}
+
+def _flood_state(user_id: int) -> str | None:
+    """Return 'trip' (just hit the limit — warn once), 'silent' (in cooldown —
+    ignore quietly), or None (allowed)."""
+    now = _time.monotonic()
+    if now < _cooldown_until.get(user_id, 0.0):
+        return "silent"
+    dq = _msg_times.setdefault(user_id, deque())
+    while dq and now - dq[0] > _FLOOD_WINDOW:
+        dq.popleft()
+    dq.append(now)
+    if len(dq) > _FLOOD_MAX:
+        _cooldown_until[user_id] = now + _FLOOD_COOLDOWN
+        dq.clear()
+        return "trip"
+    return None
+
+async def _antispam_block(update, u) -> bool:
+    """Gate at the top of every message/callback handler. Returns True if the
+    update should be dropped (bot account, or user is flooding). Admins bypass."""
+    if u is None:
+        return False
+    if getattr(u, "is_bot", False):
+        return True
+    if u.id in ADMIN_CHAT_IDS:
+        return False
+    state = _flood_state(u.id)
+    if state is None:
+        return False
+    if state == "trip":
+        log.warning("anti-spam: throttling user %s (flood)", u.id)
+        try:
+            await update.effective_message.reply_text(t("too_many_msgs", user_lang(u.id)))
+        except Exception:
+            pass
+    return True
 
 def md_esc(s: str | None) -> str:
     """Escape user-provided text for safe inclusion in Markdown (v1) messages."""
@@ -915,6 +964,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     data = q.data
     u = q.from_user
+    if await _antispam_block(update, u):
+        return
     lang = user_lang(u.id)
 
     # Language selection (before main menu is even visible)
@@ -1220,6 +1271,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
     u = update.effective_user
+    if await _antispam_block(update, u):
+        return
     db.upsert_user(u.id, u.username, u.first_name)
 
     # Admin replying (Telegram reply) to a client notification → relay to client.
@@ -1489,6 +1542,8 @@ async def on_attachment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.message is None:  # e.g. an edited media message — nothing fresh to handle
         return
     u = update.effective_user
+    if await _antispam_block(update, u):
+        return
 
     # Admin replying with a file/photo to a client notification → relay it.
     if await _maybe_relay_admin_reply(update, ctx):

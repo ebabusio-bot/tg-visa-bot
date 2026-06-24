@@ -165,6 +165,7 @@ T: dict[str, dict[str, object]] = {
         ),
         "footer_remaining": "\n\n_Осталось вопросов: {left}/{total}_",
         "llm_error": "Временная ошибка при обращении к базе знаний. Попробуйте ещё раз через минуту.",
+        "too_many_msgs": "⏳ Слишком много сообщений подряд. Пожалуйста, подождите немного и напишите снова.",
 
         "lead_prompt": (
             "Чтобы наши специалисты связались с вами, пожалуйста, укажите:\n\n"
@@ -400,6 +401,7 @@ T: dict[str, dict[str, object]] = {
         ),
         "footer_remaining": "\n\n_Залишилось запитань: {left}/{total}_",
         "llm_error": "Тимчасова помилка при зверненні до бази знань. Спробуйте ще раз через хвилину.",
+        "too_many_msgs": "⏳ Забагато повідомлень поспіль. Будь ласка, зачекайте трохи і напишіть знову.",
 
         "lead_prompt": (
             "Щоб фахівець зв'язався з вами, будь ласка, вкажіть:\n\n"
@@ -645,6 +647,7 @@ T: dict[str, dict[str, object]] = {
         ),
         "footer_remaining": "\n\n_Questions left: {left}/{total}_",
         "llm_error": "Temporary error contacting the knowledge base. Please try again in a minute.",
+        "too_many_msgs": "⏳ Too many messages in a row. Please wait a moment and try again.",
 
         "lead_prompt": (
             "For a specialist to contact you, please provide:\n\n"
@@ -878,6 +881,7 @@ T: dict[str, dict[str, object]] = {
         ),
         "footer_remaining": "\n\n_Preguntas restantes: {left}/{total}_",
         "llm_error": "Error temporal al consultar la base de conocimientos. Intente de nuevo en un minuto.",
+        "too_many_msgs": "⏳ Demasiados mensajes seguidos. Espere un momento e inténtelo de nuevo.",
 
         "lead_prompt": (
             "Para que un especialista le contacte, por favor indique:\n\n"
