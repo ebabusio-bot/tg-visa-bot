@@ -12,7 +12,7 @@ Reports:
 """
 import os
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("HEALTHCHECK_PORT", "8080"))
 HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "heartbeat")
@@ -28,6 +28,8 @@ def _is_healthy() -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 10  # seconds; drop clients that connect but never send a request
+
     def _respond(self, with_body: bool):
         ok = _is_healthy()
         body = b"ok" if ok else b"stale"
@@ -49,4 +51,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    server.daemon_threads = True
+    server.serve_forever()
